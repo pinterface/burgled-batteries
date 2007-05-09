@@ -1,6 +1,10 @@
 (in-package :pyffi)
 
-(defpyfun "uno" "getComponentContext")
+(pyth-on)
+
+(py-require "uno")
+
+(defpyfun "uno.getComponentContext" ())
 
 (defpyslot "ServiceManager")
 (defpyslot "Text")

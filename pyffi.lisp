@@ -104,6 +104,10 @@
 	     (progn
 	       (if (not (eql type :py-object-borrowed)) (py-incref value))
 	       value)))))))
+
+(defconstant +py-file-input+ 257)
+(defconstant +py-single-input+ 256)
+(defconstant +py-eval-input+ 258)
 	   
 (defcfun "Py_Initialize" :void)
 (defcfun "Py_Finalize" :void)
@@ -120,16 +124,23 @@
 (defcfun "PyErr_Occurred" :pointer)
 (defcfun "PyImport_GetModuleDict" :py-dict)
 (defcfun "PyImport_Import" :pointer (name :py-string))
+(defcfun "PyImport_ImportModule" :pointer (name :string))
+(defcfun "PyImport_ImportModuleEx" :pointer (name :string) (globals :pointer) (locals :pointer) (fromlist :pointer))
+(defcfun "PyImport_AddModule" :pointer (name :string))
 (defcfun "PyInt_AsLong" :long (o :pointer))
 (defcfun "PyInt_FromLong" :pointer (i :long))
 (defcfun "PyList_New" :pointer (size :int))
 (defcfun "PyList_Size" :int (lst :pointer))
 (defcfun "PyList_GetItem" :py-object-borrowed (lst :pointer) (index :int))
 (defcfun "PyList_SetItem" :int (lst :pointer) (index :int) (o :py-object))
+(defcfun "PyModule_GetDict" :py-dict (m :pointer))
+(defcfun ("PyModule_GetDict" pymodule-getdict-as-ptr) :pointer (m :pointer))
 (defcfun "PyObject_CallObject" :py-object (o :pointer) (args :py-tuple))
 (defcfun "PyObject_GetAttrString" :py-object (o :pointer) (attr :string))
+(defcfun "PyObject_SetAttrString" :int (o :pointer) (s :string) (a :py-object))
 (defcfun "PyObject_Str" :py-string (o :pointer))
 (defcfun "PyObject_Type" :pointer (o :pointer))
+(defcfun "PyRun_String" :py-object (str :string) (start :int) (globals :pointer) (locals :pointer))
 (defcfun "PyString_AsString" :string (s :pointer))
 (defcfun "PyString_FromString" :pointer (s :string))
 (defcfun "PyTuple_New" :pointer (size :int))
@@ -137,41 +148,66 @@
 (defcfun "PyTuple_GetItem" :py-object-borrowed (lst :pointer) (index :int))
 (defcfun "PyTuple_SetItem" :int (lst :pointer) (index :int) (o :py-object))
 
+(defvar *py-main-module*)
+(defvar *py-main-module-dict*)
+(defvar *pyphuns* (make-hash-table))
+
+(defun pyth-on ()
+  (py-initialize)
+  (setf *py-main-module* (pyimport-addmodule "__main__"))
+  (setf *py-main-module-dict* (pymodule-getdict-as-ptr *py-main-module*))
+  (let ((tmp (pyrun-string "from __builtin__ import *" +py-single-input+ 
+			   *py-main-module-dict* (null-pointer))))
+    (py-decref tmp)))
+
+(defun pyth-off ()
+  (setf *py-main-module* nil *py-main-module-dict* nil)
+  (clrhash *pyphuns*)
+  (py-finalize))
+
+(defun py-require (name)
+  (let ((p (position #\. name)))
+    (let ((m (pyimport-importmoduleex 
+	      name *py-main-module-dict* *py-main-module-dict* (null-pointer))))
+      (unwind-protect
+	   (if (= -1 (pyobject-setattrstring 
+		      *py-main-module* (if p (subseq name 0 p) name) m))
+	       (raise-python-exception))
+	(py-decref m))))) 
+
+(defun py-eval (expression)
+  (pyrun-string 
+   expression +py-eval-input+ *py-main-module-dict* *py-main-module-dict*))
+
 (defun py-apply (func &rest args)
   (pyobject-callobject func (apply #'vector args)))
 
 ;should add keyword arguments
-(defmacro defpyfun (module name &rest args)
- (let ((mdl (gensym)) (func (gensym)))
-   `(defun 
-	,(intern (format nil "~a.~a" (string-upcase module) 
-			      (string-upcase name))) 
-	,args
-     (let ((,mdl (pyimport-import ,module)))
-       (if (null-pointer-p ,mdl) (raise-python-exception)
-	   (unwind-protect
-		(let ((,func (pyobject-getattrstring ,mdl ,name)))
-		  (if (null-pointer-p ,func) (raise-python-exception)
-		      (unwind-protect
-			   (if (not (pycallable-check ,func))
-			       (raise-python-exception)
-			       (pyobject-callobject ,func (vector ,@args)))
-			(py-decref ,func))))
-	     (py-decref ,mdl)))))))
+(defmacro defpyfun (expression args)
+ (let ((func (gensym))
+       (name (if (listp expression) 
+		 (second expression) 
+		 (intern (string-upcase expression))))
+       (form (if (listp expression) (first expression) expression)))
+   `(defun ,name ,args
+      (let ((,func (gethash ',name *pyphuns*)))
+	(if (null ,func)
+	    (progn
+	      (setf ,func (py-eval ,form))
+	      (if (not (pycallable-check ,func))
+		  (progn
+		    (py-decref ,func)
+		    (raise-python-exception)))
+	      (setf (gethash ',name *pyphuns*) ,func)))
+	(py-apply ,func ,@args)))))
 
-;two lame macros follow
-
-(defmacro defpyslot (name)
-  `(defun ,(intern (string-upcase name)) (obj)
+(defmacro defpyslot (name &optional lisp-name)
+  `(defun ,(intern (string-upcase (or lisp-name name))) (obj)
      (pyobject-getattrstring obj ,name)))
 
-(defmacro defpymethod (name)
-  `(defun ,(intern (string-upcase name)) (obj &rest args)
+(defmacro defpymethod (name &optional lisp-name)
+  `(defun ,(intern (string-upcase (or lisp-name name))) (obj &rest args)
      (pyobject-callobject 
       (pyobject-getattrstring obj ,name) 
       (apply #'vector args))))
-
-;(defmacro with-python-string ((var str) &body body)
-;  `(let ((,var (pystring-fromstring ,str)))
-;     (unwind-protect (progn ,@body) (py-decref ,var))))
 
