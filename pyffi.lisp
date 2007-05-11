@@ -62,9 +62,24 @@
       (dotimes (i len) (push (pylist-getitem value i) lst))
       (reverse lst)))))
 
+(defpytype :py-float
+    ((pyfloat-fromdouble value))
+  ((pyfloat-asdouble value)))
+
 (defpytype :py-string
     ((pystring-fromstring value))
   ((pystring-asstring value)))
+
+(defpytype :py-unicode
+    ((let ((len (length value)))
+       (with-foreign-object (buf :uint32 len)
+	 (dotimes (i len) 
+	   (setf (mem-aref buf :uint32 i) (char-code (char value i))))
+	 (pyunicodeucs4-fromunicode buf len))))
+  ((let ((buf (pyunicodeucs4-asunicode value))
+	 (len (pyunicodeucs4-getsize value)))
+     (map 'string #'code-char
+	  (loop for i below len collect (mem-aref buf :uint32 i))))))
 
 (defpytype :py-dict ;accoc-list?
     ((let ((dct (pydict-new)))
@@ -78,10 +93,20 @@
   ((let ((dct (make-hash-table :test #'equal)) 
 	 (its (pydict-items value)))
      (dolist (i its dct) (setf (gethash (svref i 0) dct) (svref i 1))))))
+
+(defvar *python-types*
+  '(("<type 'int'>" . :py-int-borrowed)
+    ("<type 'float'>" . :py-float-borrowed)
+    ("<type 'list'>" . :py-list-borrowed)
+    ("<type 'str'>" . :py-string-borrowed)
+    ("<type 'unicode'>" . :py-unicode-borrowed)
+    ("<type 'dict'>" . :py-dict-borrowed)
+    ("<type 'tuple'>" . :py-tuple-borrowed)))
   
 (defpytype :py-object
   ((cond
      ((integerp value) (translate-to-foreign value :py-int))
+     ((floatp value) (translate-to-foreign value :py-float))
      ((listp value) (translate-to-foreign value :py-list))
      ((and (stringp value) (every (lambda (c) (> 256 (char-code c))) value))
       (translate-to-foreign value :py-string))
@@ -92,13 +117,7 @@
    (let ((typ (pyobject-type value)))
      (let ((typ-name (pyobject-str typ)))
        (py-decref typ)
-       (let ((typ-key
-	      (cond
-		((string= "<type 'int'>" typ-name) :py-int-borrowed)
-		((string= "<type 'list'>" typ-name) :py-list-borrowed)
-		((string= "<type 'str'>" typ-name) :py-string-borrowed)
-		((string= "<type 'dict'>" typ-name) :py-dict-borrowed)
-		((string= "<type 'tuple'>" typ-name) :py-tuple-borrowed))))
+       (let ((typ-key (cdr (assoc typ-name *python-types* :test #'string=))))
 	 (if typ-key
 	     (translate-from-foreign value typ-key)
 	     (progn
@@ -122,6 +141,8 @@
 (defcfun "PyDict_Items" :py-list (d :pointer))
 (defcfun "PyDict_SetItem" :int (d :pointer) (key :py-object) (val :py-object))
 (defcfun "PyErr_Occurred" :pointer)
+(defcfun "PyFloat_AsDouble" :double (s :pointer))
+(defcfun "PyFloat_FromDouble" :pointer (s :double))
 (defcfun "PyImport_GetModuleDict" :py-dict)
 (defcfun "PyImport_Import" :pointer (name :py-string))
 (defcfun "PyImport_ImportModule" :pointer (name :string))
@@ -147,6 +168,12 @@
 (defcfun "PyTuple_Size" :int (lst :pointer))
 (defcfun "PyTuple_GetItem" :py-object-borrowed (lst :pointer) (index :int))
 (defcfun "PyTuple_SetItem" :int (lst :pointer) (index :int) (o :py-object))
+(defcfun "PyUnicodeUCS4_AsUnicode" :pointer (s :pointer))
+(defcfun "PyUnicodeUCS4_FromUnicode" :pointer (s :pointer) (size :int))
+(defcfun "PyUnicodeUCS4_GetSize" :int (u :pointer))
+(defcfun "PyUnicodeUCS2_AsUnicode" :pointer (s :pointer))
+(defcfun "PyUnicodeUCS2_FromUnicode" :pointer (s :pointer) (size :int))
+(defcfun "PyUnicodeUCS2_GetSize" :int (u :pointer))
 
 (defvar *py-main-module*)
 (defvar *py-main-module-dict*)
