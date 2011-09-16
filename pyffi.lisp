@@ -145,7 +145,12 @@
 (defcfun "PyImport_GetModuleDict" :py-dict)
 (defcfun "PyImport_Import" :pointer (name :py-string))
 (defcfun "PyImport_ImportModule" :pointer (name :string))
+;; FIXME: Python docs say ImportModuleEx became an alias for ImportModuleLevel
+;;        in 2.6, which apparently means "no longer exists as a function in the
+;;        shared library".  If we're going to support older versions of Python,
+;;        we'll have to work around that.
 (defcfun "PyImport_ImportModuleEx" :pointer (name :string) (globals :pointer) (locals :pointer) (fromlist :pointer))
+(defcfun "PyImport_ImportModuleLevel" :pointer (name :string) (globals :pointer) (locals :pointer) (fromlist :pointer) (level :int))
 (defcfun "PyImport_AddModule" :pointer (name :string))
 (defcfun "PyInt_AsLong" :long (o :pointer))
 (defcfun "PyInt_FromLong" :pointer (i :long))
@@ -193,8 +198,8 @@
 
 (defun py-require (name)
   (let ((p (position #\. name)))
-    (let ((m (pyimport-importmoduleex 
-	      name *py-main-module-dict* *py-main-module-dict* (null-pointer))))
+    (let ((m (pyimport-importmodulelevel
+	      name *py-main-module-dict* *py-main-module-dict* (null-pointer) -1)))
       (unwind-protect
 	   (if (= -1 (pyobject-setattrstring 
 		      *py-main-module* (if p (subseq name 0 p) name) m))
