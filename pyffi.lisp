@@ -122,10 +122,6 @@
 	     (progn
 	       (if (not (eql type :py-object-borrowed)) (py-incref value))
 	       value)))))))
-
-(defconstant +py-file-input+ 257)
-(defconstant +py-single-input+ 256)
-(defconstant +py-eval-input+ 258)
 	   
 (defcfun "Py_Initialize" :void)
 (defcfun "Py_Finalize" :void)
