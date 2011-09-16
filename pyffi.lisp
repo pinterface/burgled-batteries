@@ -3,11 +3,10 @@
 
 (in-package pyffi)
 
-(define-foreign-library python-library                                     
-  (:darwin (:framework "Python"))                                               
-  (:unix (:or "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0")
-)                                                                               
-  (:windows (:or "python25.dll" "python24.dll" "python23.dll") )                
+(define-foreign-library python-library
+  (:darwin (:framework "Python"))
+  (:unix (:or "libpython2.7.so.1.0" "libpython2.6.so.1.0" "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0"))
+  (:windows (:or "python27.dll" "python26.dll" "python25.dll" "python24.dll" "python23.dll"))
   (t (:default "libpython")))
 
 (use-foreign-library python-library)
