@@ -1,9 +1,9 @@
-(in-package #:pyffi)
+(in-package #:python.cffi)
 
 (include "Python.h")
 
-(ctype :Py-ssize-t "Py_ssize_t")
+(ctype ssize-t "Py_ssize_t")
 
-(constant (+py-eval-input+   "Py_eval_input"  ) :type integer)
-(constant (+py-file-input+   "Py_file_input"  ) :type integer)
-(constant (+py-single-input+ "Py_single_input") :type integer)
+(constant (+eval-input+   "Py_eval_input"  ) :type integer)
+(constant (+file-input+   "Py_file_input"  ) :type integer)
+(constant (+single-input+ "Py_single_input") :type integer)
