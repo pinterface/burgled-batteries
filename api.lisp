@@ -7,9 +7,9 @@
 (defun startup-python ()
   (.initialize)
   (setf *py-main-module* (import.add-module "__main__"))
-  (setf *py-main-module-dict* (module.getdict/as-ptr *py-main-module*))
-  (let ((tmp (run.string "from __builtin__ import *" +single-input+
-                         *py-main-module-dict* (cffi:null-pointer))))
+  (setf *py-main-module-dict* (module.get-dict* *py-main-module*))
+  (let ((tmp (run.string* "from __builtin__ import *" +single-input+
+                          *py-main-module-dict* (cffi:null-pointer))))
     (.dec-ref tmp)))
 
 (defun shutdown-python ()
@@ -30,6 +30,7 @@
 (defun apply (func &rest args)
   (object.call-object func (cl:apply #'vector args)))
 
+;; FIXME: this produces errors now
 ;should add keyword arguments
 (defmacro defpyfun (expression args)
  (let ((func (gensym))
@@ -49,6 +50,7 @@
 	      (setf (gethash ',name *pyphuns*) ,func)))
 	(apply ,func ,@args)))))
 
+;; FIXME: nonsensical for translated values
 (defmacro defpyslot (name &optional lisp-name)
   `(defun ,(intern (string-upcase (or lisp-name name))) (obj)
      (object.get-attr-string obj ,name)))

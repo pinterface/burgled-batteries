@@ -1,6 +1,7 @@
 ;;; -*- Lisp -*-
 (cl:eval-when (:load-toplevel :execute)
-  (asdf:load-system "cffi-grovel"))
+  (asdf:load-system "cffi-grovel")
+  (pushnew :pyffi.debug *features*))
 
 (defpackage #:pyffi-system (:use #:asdf #:cl #:cffi-grovel))
 (in-package #:pyffi-system)

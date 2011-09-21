@@ -1,7 +1,7 @@
 (defpackage #:python.cffi
   (:use #:cl #:cffi #:alexandria)
   (:import-from #:cffi #:parse-type #:find-type-parser)
-  (:shadow #:type #:list #:float #:string)
+  (:shadow #:type #:list #:float #:string #:complex)
   (:export #:.initialize
            #:.finalize
            #:import.add-module
@@ -13,8 +13,9 @@
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))
-               (do-external-symbols (v '#:python.cffi sym)
-                 (push (symbol-name v) sym)))))
+               (when (find-package '#:python.cffi)
+                 (do-external-symbols (v '#:python.cffi sym)
+                   (push (symbol-name v) sym))))))
 
 (defpackage #:pyffi
   (:use #:cl #:python.cffi)
