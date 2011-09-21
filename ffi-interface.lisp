@@ -69,21 +69,37 @@
                     ,@decls
                     #+pyffi.debug (format t "In altfn ~A: ~A~%" ',lisp-name ,(caar args))
                     ,@body))))
-           (%known-python-type-p (return-type)
-             (etypecase return-type
-               (cl:list (if (eql (first return-type) 'can-error)
-                            (%known-python-type-p (second return-type))
-                            (gethash (car return-type) *type-map*)))
-               (symbol (gethash return-type *type-map*)))))
+           ;; Ugh.  But necessary to work with type aliases for when we
+           ;; shorten things (e.g., always-error).
+           (%known-python-type-p (type)
+             (etypecase type
+               (cffi::foreign-typedef (or (%known-python-type-p (cffi::name type))
+                                          (%known-python-type-p (cffi::actual-type type))))
+               (cffi::enhanced-foreign-type (or (%known-python-type-p (cffi::unparsed-type type))
+                                                (%known-python-type-p (cffi::actual-type type))))
+               (cffi::foreign-built-in-type nil)
+               (cl:list (%known-python-type-p (car type)))
+               (symbol (gethash type *type-map*))))
+           ;; convert (can-error pyob) and aliases into (can-error :pointer)
+           (%translate-type-for-ptr (type)
+             (etypecase type
+               (cffi::foreign-typedef (%translate-type-for-ptr (cffi::actual-type type)))
+               (cffi::enhanced-foreign-type (let ((utype (ensure-list (cffi::unparsed-type type))))
+                                              (or (%translate-type-for-ptr utype)
+                                                  (mapcar (lambda (x) (or (%translate-type-for-ptr x) x))
+                                                          utype))))
+               (cl:list (when (%known-python-type-p (car type)) :pointer))
+               (symbol  (when (%known-python-type-p type) :pointer)))))
     (let* ((translating-lisp-name (translate-python-name name))
-           (ptring-lisp-name (when (%known-python-type-p return-type)
+           (parsed-type (parse-type return-type))
+           (ptring-lisp-name (when (%known-python-type-p parsed-type)
                                (format-symbol (symbol-package translating-lisp-name) "~A*" translating-lisp-name))))
       `(eval-when (:compile-toplevel :load-toplevel :execute)
          ,(cond
            ((foreign-symbol-pointer name)
             `(progn
                ,(%make-defcfun name translating-lisp-name return-type args alternate)
-               ,(when ptring-lisp-name (%make-defcfun name ptring-lisp-name :pointer args alternate))))
+               ,(when ptring-lisp-name (%make-defcfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate))))
            (alternate
             `(progn
                ,(%make-altfun translating-lisp-name args alternate)
