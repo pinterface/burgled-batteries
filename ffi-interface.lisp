@@ -90,22 +90,15 @@
                                   ,@alt-body))
                       (ourfn (make-defpyfun-helper-forms lisp-args alt-body decl))
                       (doc+decl `(,@(ensure-list doc) ,@(%filter-declarations decl :not-for lisp-args))))
+                 ;; We temporarily replace cffi::defcfun-helper-forms and call
+                 ;; cffi::%defcfun to create the defun so we can ensure the body
+                 ;; of our alternate function runs having been given pointers as
+                 ;; if it were C.
                  (unwind-protect
                       (progn
                         (setf (symbol-function 'cffi::defcfun-helper-forms) ourfn)
                         (cffi::%defcfun lisp-name c-name return-type c-args nil doc+decl))
                    (setf (symbol-function 'cffi::defcfun-helper-forms) realfn)))))
-           #+(or)
-           (%make-altfun (lisp-name c-args body)
-             (let ((l-args (mapcar (lambda (x) (if (consp x) (first x) x)) c-args)))
-               (multiple-value-bind (body decls) (parse-body body)
-                 `(defun ,lisp-name ,l-args
-                    ;; ignore args for :requires-<foo> things
-                    ,@(when (and (length= 1 body) (keywordp (first body)))
-                        `((declare (ignorable ,@l-args))))
-                    ,@decls
-                    #+pyffi.debug (format t "In altfn ~A: ~A~%" ',lisp-name ,(caar args))
-                    ,@body))))
            ;; Ugh.  But necessary to work with type aliases for when we
            ;; shorten things (e.g., always-error).
            (%known-python-type-p (type)
@@ -143,31 +136,9 @@
                   ,(%make-defcfun name translating-lisp-name return-type args alternate)
                   ,(when ptring-lisp-name (%make-defcfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate))))
               (alternate
-;               #+(or)
-               ;; We temporarily replace cffi::defcfun-helper-forms and call
-               ;; cffi::%defcfun to create the defun so we can ensure the body
-               ;; of our alternate function runs having been given pointers as
-               ;; if it were C.
                `(progn
                   ,(%make-altfun name translating-lisp-name return-type args alternate)
-                  ,(when ptring-lisp-name (%make-altfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate)))
-               #+(or)
-               (multiple-value-bind (alt-body decl doc)
-                   (parse-body alternate :documentation t)
-                 (let ((realfn (symbol-function 'cffi::defcfun-helper-forms))
-                       (ourfn (make-defpyfun-helper-forms (mapcar (lambda (x) (if (consp x) (first x) x)) args) alt-body))
-                       (doc+decl `(,@(ensure-list doc) ,@(ensure-list decl))))
-                   (unwind-protect
-                        (progn
-                          (setf (symbol-function 'cffi::defcfun-helper-forms) ourfn)
-                          `(progn
-                             ,(cffi::%defcfun translating-lisp-name name return-type args nil doc+decl)
-                             ,(when ptring-lisp-name (cffi::%defcfun ptring-lisp-name name (%translate-type-for-ptr parsed-type) args nil doc+decl))))
-                     (setf (symbol-function 'cffi::defcfun-helper-forms) realfn))))
-               #+(or)
-             `(progn
-                  ,(%make-altfun translating-lisp-name args alternate)
-                  ,(when ptring-lisp-name (%make-altfun ptring-lisp-name args alternate))))
+                  ,(when ptring-lisp-name (%make-altfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate))))
               (t (error "The C function ~S does not appear to exist." name)))
            ,(when exportp `(export ',translating-lisp-name))
            ,(when ptring-lisp-name `(export ',ptring-lisp-name))
