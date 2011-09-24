@@ -2,8 +2,11 @@
 
 (include "Python.h")
 
+;; Sizes
 (ctype ssize-t "Py_ssize_t")
+(ctype size-t  "size_t")
 
+;; Evaluation Context Flags
 (constant (+eval-input+   "Py_eval_input"  ) :type integer)
 (constant (+file-input+   "Py_file_input"  ) :type integer)
 (constant (+single-input+ "Py_single_input") :type integer)
@@ -16,3 +19,45 @@
 (constant (+trace-c-call+      "PyTrace_C_CALL")      :type integer)
 (constant (+trace-c-exception+ "PyTrace_C_EXCEPTION") :type integer)
 (constant (+trace-c-return+    "PyTrace_C_RETURN")    :type integer)
+
+;; Comparison Operator Flags
+(constant (+lt+ "Py_LT") :type integer)
+(constant (+le+ "Py_LE") :type integer)
+(constant (+eq+ "Py_EQ") :type integer)
+(constant (+ne+ "Py_NE") :type integer)
+(constant (+gt+ "Py_GT") :type integer)
+(constant (+ge+ "Py_GE") :type integer)
+
+;; Type Flags
+(constant (+tpflags.have-get-char-buffer+     "Py_TPFLAGS_HAVE_GETCHARBUFFER")       :type integer)
+(constant (+tpflags.have-sequence-in+         "Py_TPFLAGS_HAVE_SEQUENCE_IN")         :type integer)
+(constant (+tpflags.gc+                       "Py_TPFLAGS_GC")                       :type integer)
+(constant (+tpflags.have-inplaceops+          "Py_TPFLAGS_HAVE_INPLACEOPS")          :type integer)
+(constant (+tpflags.checktypes+               "Py_TPFLAGS_CHECKTYPES")               :type integer)
+(constant (+tpflags.have-richcompare+         "Py_TPFLAGS_HAVE_RICHCOMPARE")         :type integer)
+(constant (+tpflags.have-weakrefs+            "Py_TPFLAGS_HAVE_WEAKREFS")            :type integer)
+(constant (+tpflags.have-iter+                "Py_TPFLAGS_HAVE_ITER")                :type integer)
+(constant (+tpflags.have-class+               "Py_TPFLAGS_HAVE_CLASS")               :type integer)
+(constant (+tpflags.heaptype+                 "Py_TPFLAGS_HEAPTYPE")                 :type integer)
+(constant (+tpflags.basetype+                 "Py_TPFLAGS_BASETYPE")                 :type integer)
+(constant (+tpflags.ready+                    "Py_TPFLAGS_READY")                    :type integer)
+(constant (+tpflags.readying+                 "Py_TPFLAGS_READYING")                 :type integer)
+(constant (+tpflags.have-gc+                  "Py_TPFLAGS_HAVE_GC")                  :type integer)
+(constant (+tpflags.have-stackless-extension+ "Py_TPFLAGS_HAVE_STACKLESS_EXTENSION") :type integer)
+(constant (+tpflags.have-index+               "Py_TPFLAGS_HAVE_INDEX")               :type integer)
+(constant (+tpflags.have-version-tag+         "Py_TPFLAGS_HAVE_VERSION_TAG")         :type integer)
+(constant (+tpflags.valid-version-tag+        "Py_TPFLAGS_VALID_VERSION_TAG")        :type integer)
+(constant (+tpflags.is-abstract+              "Py_TPFLAGS_IS_ABSTRACT")              :type integer)
+(constant (+tpflags.have-newbuffer+           "Py_TPFLAGS_HAVE_NEWBUFFER")           :type integer)
+(constant (+tpflags.int-subclass+             "Py_TPFLAGS_INT_SUBCLASS")             :type integer)
+(constant (+tpflags.long-subclass+            "Py_TPFLAGS_LONG_SUBCLASS")            :type integer)
+(constant (+tpflags.list-subclass+            "Py_TPFLAGS_LIST_SUBCLASS")            :type integer)
+(constant (+tpflags.tuple-subclass+           "Py_TPFLAGS_TUPLE_SUBCLASS")           :type integer)
+(constant (+tpflags.string-subclass+          "Py_TPFLAGS_STRING_SUBCLASS")          :type integer)
+(constant (+tpflags.unicode-subclass+         "Py_TPFLAGS_UNICODE_SUBCLASS")         :type integer)
+(constant (+tpflags.dict-subclass+            "Py_TPFLAGS_DICT_SUBCLASS")            :type integer)
+(constant (+tpflags.base-exc-subclass+        "Py_TPFLAGS_BASE_EXC_SUBCLASS")        :type integer)
+(constant (+tpflags.type-subclass+            "Py_TPFLAGS_TYPE_SUBCLASS")            :type integer)
+(constant (+tpflags.default-external+         "Py_TPFLAGS_DEFAULT_EXTERNAL")         :type integer)
+(constant (+tpflags.default-core+             "Py_TPFLAGS_DEFAULT_CORE")             :type integer)
+(constant (+tpflags.default+                  "Py_TPFLAGS_DEFAULT")                  :type integer)

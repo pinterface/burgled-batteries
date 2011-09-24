@@ -15,14 +15,18 @@
 ;;;; FFI -> Lisp Name Translation
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun translate-python-name (c-name)
-    (unless (string= "Py" c-name :end2 2)
-      (error "Not a Python name."))
-    (let ((sym (ensure-symbol
+    (let* ((start (cond
+                    ((string= "_Py" c-name :end2 3) 3)
+                    ((string= "Py"  c-name :end2 2) 2)
+                    (t (error "Not a Python name."))))
+           (sym (ensure-symbol
                 (with-output-to-string (s)
-                  (loop :for a :across (subseq c-name 2)
-                        :for b :across (subseq c-name 3)
+                  (loop :with seen-underscore = nil
+                        :for a :across (subseq c-name start)
+                        :for b :across (subseq c-name (1+ start))
                         :do (cond
-                              ((char= a #\_) (princ #\. s))
+                              ((and (char= a #\_) (not seen-underscore)) (princ #\. s) (setf seen-underscore t))
+                              ((char= a #\_) (princ #\- s))
                               ((and (not (upper-case-p a))
                                     (upper-case-p b))
                                (format s "~C~C" (char-upcase a) #\-))
@@ -32,7 +36,11 @@
       (if (eql (find-package '#:cl) (symbol-package sym))
           (error "The python name ~S produces a symbol ~A in the CL package!"
                  c-name sym)
-          sym))))
+          sym)))
+  (defun parse-python-name (names)
+    (etypecase names
+      (cl:list   (values (first names) (second names) nil))
+      (cl:string (values names (translate-python-name names) t)))))
 
 ;;;; Basic Handling of the PyObject struct
 (defcstruct %object
@@ -52,6 +60,19 @@
   (defun register-python-type (python-type lisp-type)
     (setf (gethash python-type *type-map*) lisp-type)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun %filter-declarations (decls &key for not-for)
+    (build-declarations 'declare (filter-declaration-env (parse-declarations decls)
+                                                         :affecting for
+                                                         :not-affecting not-for)))
+  (defun make-defpyfun-helper-forms (wrapped-args wrapped-forms declarations)
+    (lambda (name lisp-name rettype args types options)
+      (declare (ignore name lisp-name rettype types options))
+      (values '()
+              `(let ,(mapcar #'cl:list wrapped-args args)
+                 ,@(%filter-declarations declarations :for wrapped-args)
+                 ,@wrapped-forms)))))
+
 ;;;; Interface for Python API Definitions
 (defmacro defpyfun (name return-type args &body alternate)
   (labels ((%make-defcfun (c-name lisp-name return-type args alt-body)
@@ -59,6 +80,22 @@
                `(defcfun (,c-name ,lisp-name) ,return-type
                   ,@(when docstring `(,docstring))
                   ,@args)))
+           (%make-altfun (c-name lisp-name return-type c-args alt-body)
+             (multiple-value-bind (alt-body decl doc)
+                 (parse-body alt-body :documentation t)
+               (let* ((realfn (symbol-function 'cffi::defcfun-helper-forms))
+                      (lisp-args (mapcar (lambda (x) (if (consp x) (first x) x)) c-args))
+                      (alt-body `(,@(when (and (length= 1 alt-body) (keywordp (first alt-body)))
+                                      `((declare (ignorable ,@lisp-args))))
+                                  ,@alt-body))
+                      (ourfn (make-defpyfun-helper-forms lisp-args alt-body decl))
+                      (doc+decl `(,@(ensure-list doc) ,@(%filter-declarations decl :not-for lisp-args))))
+                 (unwind-protect
+                      (progn
+                        (setf (symbol-function 'cffi::defcfun-helper-forms) ourfn)
+                        (cffi::%defcfun lisp-name c-name return-type c-args nil doc+decl))
+                   (setf (symbol-function 'cffi::defcfun-helper-forms) realfn)))))
+           #+(or)
            (%make-altfun (lisp-name c-args body)
              (let ((l-args (mapcar (lambda (x) (if (consp x) (first x) x)) c-args)))
                (multiple-value-bind (body decls) (parse-body body)
@@ -77,37 +114,64 @@
                                           (%known-python-type-p (cffi::actual-type type))))
                (cffi::enhanced-foreign-type (or (%known-python-type-p (cffi::unparsed-type type))
                                                 (%known-python-type-p (cffi::actual-type type))))
+               (cffi::named-foreign-type nil)
                (cffi::foreign-built-in-type nil)
                (cl:list (%known-python-type-p (car type)))
                (symbol (gethash type *type-map*))))
            ;; convert (can-error pyob) and aliases into (can-error :pointer)
            (%translate-type-for-ptr (type)
-             (etypecase type
-               (cffi::foreign-typedef (%translate-type-for-ptr (cffi::actual-type type)))
-               (cffi::enhanced-foreign-type (let ((utype (ensure-list (cffi::unparsed-type type))))
-                                              (or (%translate-type-for-ptr utype)
-                                                  (mapcar (lambda (x) (or (%translate-type-for-ptr x) x))
-                                                          utype))))
-               (cl:list (when (%known-python-type-p (car type)) :pointer))
-               (symbol  (when (%known-python-type-p type) :pointer)))))
-    (let* ((translating-lisp-name (translate-python-name name))
-           (parsed-type (parse-type return-type))
-           (ptring-lisp-name (when (%known-python-type-p parsed-type)
-                               (format-symbol (symbol-package translating-lisp-name) "~A*" translating-lisp-name))))
-      `(eval-when (:compile-toplevel :load-toplevel :execute)
-         ,(cond
-           ((foreign-symbol-pointer name)
-            `(progn
-               ,(%make-defcfun name translating-lisp-name return-type args alternate)
-               ,(when ptring-lisp-name (%make-defcfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate))))
-           (alternate
-            `(progn
-               ,(%make-altfun translating-lisp-name args alternate)
-               ,(when ptring-lisp-name (%make-altfun ptring-lisp-name args alternate))))
-           (t (error "The C function ~S does not appear to exist." name)))
-         (export ',translating-lisp-name)
-         ,(when ptring-lisp-name `(export ',ptring-lisp-name))
-         ',translating-lisp-name))))
+             (cond
+               ((typep type 'can-error) ; delayed type action
+                `(can-error ,(%translate-type-for-ptr (cffi::actual-type type))))
+               (t
+                (etypecase type
+                  (cffi::foreign-typedef (%translate-type-for-ptr (cffi::actual-type type)))
+                  (cffi::enhanced-foreign-type
+                   (let ((utype (cffi::unparsed-type type)))
+                     (or (%translate-type-for-ptr utype)
+                         (mapcar (lambda (x) (or (%translate-type-for-ptr x) x)) utype))))
+                  (cl:list (when (%known-python-type-p (car type)) :pointer))
+                  (symbol  (when (%known-python-type-p type) :pointer)))))))
+    (multiple-value-bind (name translating-lisp-name exportp) (parse-python-name name)
+      (let* ((parsed-type (parse-type return-type))
+             (ptring-lisp-name (when (%known-python-type-p parsed-type)
+                                 (format-symbol (symbol-package translating-lisp-name) "~A*" translating-lisp-name))))
+        `(eval-when (:compile-toplevel :load-toplevel :execute)
+           ,(cond
+              ((foreign-symbol-pointer name)
+               `(progn
+                  ,(%make-defcfun name translating-lisp-name return-type args alternate)
+                  ,(when ptring-lisp-name (%make-defcfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate))))
+              (alternate
+;               #+(or)
+               ;; We temporarily replace cffi::defcfun-helper-forms and call
+               ;; cffi::%defcfun to create the defun so we can ensure the body
+               ;; of our alternate function runs having been given pointers as
+               ;; if it were C.
+               `(progn
+                  ,(%make-altfun name translating-lisp-name return-type args alternate)
+                  ,(when ptring-lisp-name (%make-altfun name ptring-lisp-name (%translate-type-for-ptr parsed-type) args alternate)))
+               #+(or)
+               (multiple-value-bind (alt-body decl doc)
+                   (parse-body alternate :documentation t)
+                 (let ((realfn (symbol-function 'cffi::defcfun-helper-forms))
+                       (ourfn (make-defpyfun-helper-forms (mapcar (lambda (x) (if (consp x) (first x) x)) args) alt-body))
+                       (doc+decl `(,@(ensure-list doc) ,@(ensure-list decl))))
+                   (unwind-protect
+                        (progn
+                          (setf (symbol-function 'cffi::defcfun-helper-forms) ourfn)
+                          `(progn
+                             ,(cffi::%defcfun translating-lisp-name name return-type args nil doc+decl)
+                             ,(when ptring-lisp-name (cffi::%defcfun ptring-lisp-name name (%translate-type-for-ptr parsed-type) args nil doc+decl))))
+                     (setf (symbol-function 'cffi::defcfun-helper-forms) realfn))))
+               #+(or)
+             `(progn
+                  ,(%make-altfun translating-lisp-name args alternate)
+                  ,(when ptring-lisp-name (%make-altfun ptring-lisp-name args alternate))))
+              (t (error "The C function ~S does not appear to exist." name)))
+           ,(when exportp `(export ',translating-lisp-name))
+           ,(when ptring-lisp-name `(export ',ptring-lisp-name))
+           ',translating-lisp-name)))))
 
 (defmacro defpyvar (c-name &optional (lisp-name (format-symbol #.*package* "+~A+" (translate-python-name c-name))))
   `(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -118,6 +182,7 @@
 ;;; Interface for Defining Python Types
 (defmacro defpytype (c-name &body options)
   (let* ((lisp-name (translate-python-name c-name))
+         (can-error-type (symbolicate lisp-name '#:!))
          (c-var (format nil "~A_Type" c-name))
          (lisp-var (format-symbol #.*package* "+~A+" (translate-python-name c-var)))
          (lisp-type (car (assoc-value options :type)))
@@ -155,6 +220,8 @@
                                             (declare (ignorable v))
                                             #+pyffi.debug (format t "In check-lisp for ~A: ~A~%" ',lisp-name v)
                                             ,(when lisp-type `(typep v ',lisp-type)))))
+           (define-parse-method ,can-error-type (&optional (reference-type :new))
+             (parse-type `(can-error (,',lisp-name ,reference-type))))
            (register-python-type ',lisp-name (find-type-parser ',lisp-name))
            ,@(when errorp `((register-error-checker ',lisp-name ,errorp))))))))
 
@@ -170,21 +237,19 @@
 
 (defpyfun "Py_SetProgramName" :void ((name :string)))
 (defpyfun "Py_GetProgramName" :string ())
-(defpyfun "Py_GetPrefix" :string ())
-(defpyfun "Py_GetExecPrefix" :string ())
-(defpyfun "Py_GetProgramFullPath" :string ())
-(defpyfun "Py_GetPath" :string ()) ;; FIXME?: Split on #\: or #\; and return a list?
+(defpyfun "Py_GetPrefix" :string ())          ; FIXME: directory pathname?
+(defpyfun "Py_GetExecPrefix" :string ())      ; FIXME: directory pathname?
+(defpyfun "Py_GetProgramFullPath" :string ()) ; FIXME: return a pathname?
+(defpyfun "Py_GetPath" :string ())            ; FIXME?: Split on #\: or #\; and return a list of pathnames?
 (defpyfun "Py_GetVersion" :string ())
 (defpyfun "Py_GetPlatform" :string ())
 (defpyfun "Py_GetCopyright" :string ())
 (defpyfun "Py_GetCompiler" :string ())
 (defpyfun "Py_GetBuildInfo" :string ())
-#+(or) ;; CFFI doesn't really support the <char **> type.
-(defpyfun "PySys_SetArgvEx" :void ((argc :int) (argv (:array :string)) (updatepath :int))
-  (sys.set-argv argc argv))
-#+(or) ;; CFFI doesn't really support the <char **> type.
-(defpyfun "PySys_SetArgv" :void ((argc :int) (argv (:array :string))))
-(defpyfun "Py_SetPythonHome" :void ((home :string)))
+#+requires-CHAR*-ARRAY-support (defpyfun "PySys_SetArgvEx" :void ((argc :int) (argv (:array :string)) (updatepath :int))
+                                 (sys.set-argv argc argv))
+#+requires-CHAR*-ARRAY-support (defpyfun "PySys_SetArgv" :void ((argc :int) (argv (:array :string))))
+(defpyfun "Py_SetPythonHome" :void ((home :string))) ; WARNING: requires static string!
 (defpyfun "Py_GetPythonHome" :string ())
 
 ;;;; Translation Helpers for Functions Which Return Error Indicators
@@ -193,10 +258,16 @@
   (defun register-error-checker (symbol function)
     (setf (gethash symbol *error-checkers*) function))
   (defun get-error-checker (symbol)
-    (gethash symbol *error-checkers*)))
+    (gethash symbol *error-checkers*))
+  (defun %error-occurred-p () (not (null-pointer-p (err.occurred*)))))
 
+;; FIXME: In some cases the return value may-or-may-not indicate an error and we
+;;        have to check (err.occurred*).  Since (err.occurred*) will always be
+;;        non-null after an error (with a few exceptions where the error isn't
+;;        fetchable at all), it might make more sense just to always check it
+;;        and not bother with the return values of functions.
 (define-foreign-type can-error ()
-  ((error-value-p :initarg :error-value-p :reader error-value-p)
+  ((error-value-p :initarg :error-value-p :accessor error-value-p)
    (fetchablep :initarg :fetchablep :reader error-is-fetchable-p)))
 (define-parse-method can-error (actual-type &key success failure (fetchablep t))
   (let ((checkerr (get-error-checker (first (ensure-list actual-type)))))
@@ -204,10 +275,17 @@
                    :actual-type actual-type
                    :fetchablep fetchablep
                    :error-value-p (cond
-                                    (success (complement (curry #'equal success)))
-                                    (failure (curry #'equal failure))
+                                    (success (complement (rcurry #'member (ensure-list success) :test #'equal)))
+                                    (failure (rcurry #'member (ensure-list failure) :test #'equal))
                                     (checkerr checkerr)
                                     (t (constantly nil))))))
+
+(define-parse-method soft-error (actual-type &key success failure)
+  (let* ((type (parse-type `(can-error ,actual-type :success ,success :failure ,failure :fetchablep t)))
+         (ev (error-value-p type)))
+    (setf (error-value-p type)
+          (lambda (v) (and (funcall ev v) (%error-occurred-p))))
+    type))
 
 (defmethod print-object ((o can-error) s)
   (print-unreadable-object (o s :type t)
@@ -230,8 +308,15 @@
   (free-translated-object value (cffi::actual-type type) param))
 
 ;;; Some Helper Types
+(dolist (x '(:int :long :long-long size-t ssize-t))
+  (register-error-checker x (curry #'= -1)))
+(dolist (x '(:uint :ulong :unsigned-long-long))
+  (register-error-checker x (lambda (v) (declare (ignore v)) (%error-occurred-p))))
+(register-error-checker :double (curry #'= -1.0))
 (defctype 0-on-success          (can-error :int :success 0))
-(defctype 0-on-success/no-fetch (can-error :int :success 0 :fetchablep nil)) ;; May not be necessary
+(defctype 0-on-success/no-fetch (can-error :int :success 0 :fetchablep nil)) ; May not be necessary
+(defctype boolean! (can-error :boolean :success (0 1)))
+(defctype ssize-t! (can-error ssize-t))
 (register-error-checker :pointer #'null-pointer-p)
 
 ;;;; Translation Helpers for Python Types
@@ -266,6 +351,30 @@
       #+pyffi.debug (format t "In translate-from-foreign: ~A, ~A~%" value (%object.refcnt value))
       (unless (borrowed-reference-p type)
         (.dec-ref value)))))
+
+;;;; Translation for Octet Arrays
+(define-foreign-type octet-array () ())
+
+(define-parse-method octet-array ()
+  (make-instance 'octet-array :actual-type :pointer))
+
+(defmethod translate-to-foreign (value (type octet-array))
+  (cond
+    ((pointerp value) (values value nil))
+    (t (values
+        (let ((ptr (foreign-alloc :uchar :count (length value))))
+          (dotimes (i (length value) ptr)
+            (setf (mem-aref ptr :uchar i) (aref value i))))
+        (length value)))))
+
+(defmethod free-translated-object (value (type octet-array) length)
+  (when length (foreign-free value)))
+
+(defmethod translate-from-foreign (value (type octet-array))
+  (declare (special *byte-array.size*))
+  (let ((array (make-array *byte-array.size* :element-type '(unsigned-byte 8))))
+    (dotimes (i *byte-array.size* array)
+      (setf (aref array i) (mem-aref value :uchar i)))))
 
 ;;;; Definitions Relating to Python Types
 
@@ -273,6 +382,9 @@
 (defpytype "PyObject"
   (:errorp #'null-pointer-p)
   (:to (value type)
+    ;; TODO: Need a way to pick from multiple types.  Because PyBool is a
+    ;;       subclass of PyInt, right now which we get depends on the hash
+    ;;       order.
     (loop :for v :being :the :hash-values :of *type-map*
           :for foreign-type := (funcall v reference-type)
           :when (funcall (slot-value foreign-type 'lisp-is-type) value)
@@ -290,6 +402,38 @@
             :when (funcall (slot-value foreign-type 'foreign-is-type) value)
               :do (return (translate-from-foreign value foreign-type))
             :finally (return value)))))
+(defctype object? (soft-error object))
+
+;; PyType objects have a structure with something we want.  Unfortunately for
+;; us, the part we want is a ways into it.
+(defcstruct %type
+  ;; #ifdef Py_TRACE_REFS
+  #+pyffi.trace-refs (-ob-next object)
+  #+pyffi.trace-refs (-ob-prev object)
+  ;; #endif
+  (refcnt ssize-t)
+  (type :pointer) (name :pointer)
+  (basicsize ssize-t) (itemsize ssize-t)
+  ;; standard operations
+  (dealloc :pointer) (print   :pointer) (getattr :pointer)
+  (setattr :pointer) (compare :pointer) (repr    :pointer)
+  ;; generic methods
+  (as-number :pointer) (as-sequence :pointer) (as-mapping :pointer)
+  ;; more standard ops
+  (hash :pointer) (call :pointer) (str :pointer)
+  (getattro :pointer) (setattro :pointer)
+  ;; as buffer
+  (as-buffer :pointer)
+  ;; the part we actually care about
+  (flags :long)
+  ;; docstring
+  (doc :pointer)
+  ;; mo' functions
+  (traverse :pointer) (clear :pointer) (richcompare :pointer)
+  ;; weak references
+  (weaklistoffset ssize-t)
+  ;; iterators
+  (iter :pointer) (iternext :pointer))
 
 (defpytype "PyType"
   (:to   (value type) value)
@@ -308,6 +452,7 @@
 (defpyvar "_Py_ZeroStruct" +False+)
 (defpyvar "_Py_TrueStruct" +True+)
 (defpytype "PyBool"
+  (:superclass "PyInt")
   (:type boolean)
   (:to (value type) (if value +True+ +False+))
   (:from (value type)
@@ -316,7 +461,6 @@
       ((pointer-eq +False+ value) nil)
       (t (error "Not a boolean!")))))
 
-#+TODO-implement-functions
 (defpytype "PyLong"
   (:to (value type) (long.from-long* value))
   (:from (value type) (long.as-long value)))
@@ -328,27 +472,33 @@
 
 ;; FIXME: Actually using %complex will require FSBV integration (coming soon to a CFFI near you!)
 (defcstruct %complex (real :double) (imag :double))
-#+TODO-implement-functions
 (defpytype "PyComplex"
   (:type cl:complex)
+  (:errorp #'%error-occurred-p)
   (:to (value type)
     (complex.from-doubles* (realpart value) (imagpart value)))
   (:from (value type)
     (cl:complex (complex.real-as-double value) (complex.imag-as-double value))))
 
 ;;; Sequence Types
-#+TODO-implement-functions
+;; ByteArray is not fundamentally different from String/Bytes, except we don't
+;; bother trying to pretend it's got characters at all.
 (defpytype "PyByteArray"
   (:type (array (unsigned-byte 8)))
-  (:to (value type) (byte-array.from-string-and-size* value (length value)))
+  (:to   (value type) (byte-array.from-string-and-size* value (length value)))
   (:from (value type) (byte-array.as-string value)))
 
+;; WARNING!  PyString conversion will fail when there are disagreements with
+;;           encodings, or embedded NULs; and the inability to ask a string what
+;;           encoding it is means this isn't really fixable in practice.  If you
+;;           want reliable string conversion you should use PyUnicode, and
+;;           PyByteArray for reliable octet-array conversion.
 (defpytype "PyString"
-  (:type cl:string)
   (:to   (value type) (string.from-string* value))
   (:from (value type) (string.as-string    value)))
 
-#+(or) ;; FIXME: we'll need the bytes.whatever functions
+#+(or) ;; FIXME: we'll need the bytes.whatever functions, and a way to alias the
+       ;;        PyString bits that make up PyBytes in Python 2
 (defpytype "PyBytes"
   (:to   (value type) (bytes.from-string* value))
   (:from (value type) (bytes.as-string    value)))
@@ -431,9 +581,11 @@
 ;;;; API Functions Relating to Threads, Interpreter State, and Debugging
 
 ;;; Threads
+(defctype interpreter-state :pointer)
+(defctype thread-state :pointer)
+
 (defpyfun "PyEval_InitThreads" :void () :requires-python-threads)
 (defpyfun "PyEval_ThreadsInitialized" :boolean ())
-(defctype thread-state :pointer)
 (defpyfun "PyEval_SaveThread" thread-state ())
 (defpyfun "PyEval_RestoreThread" :void ((tstate thread-state)))
 (defpyfun "PyThreadState_Get" thread-state ())
@@ -451,7 +603,6 @@
        (unwind-protect (progn ,@body)
          (eval.restore-thread ,thread-state)))))
 
-(defctype interpreter-state :pointer)
 (defpyfun "PyInterpreterState_New" interpreter-state () :requires-python-threads)
 (defpyfun "PyInterpreterState_Clear" :void ((interp interpreter-state)) :requires-python-threads)
 (defpyfun "PyInterpreterState_Delete" :void ((interp interpreter-state)) :requires-python-threads)
@@ -471,7 +622,7 @@
 
 ;;; Async Notifications
 ;; TODO: Add define-notification-callback macro like define-trace-function below?
-(defpyfun "Py_AddPendingCall" (can-error :int :success 0) ((callback :pointer) (arg :pointer))
+(defpyfun "Py_AddPendingCall" 0-on-success ((callback :pointer) (arg :pointer))
   (error "Sorry, .ADD-PENDING-CALL requires Python 2.7 or newer."))
 
 ;;; Profiling and Tracing
@@ -505,44 +656,44 @@
 
 ;;;; High-level Interpreter Functions
 (defcstruct compiler-flags (flags :int))
-#+requires-CHAR*-ARRAY-support (defpyfun "Py_Main" :int ((argc :int) (argv (:array :string))))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFile" :int ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFileFlags" :int ((fp :file) (filename :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFileEx" :int ((fp :file) (filename :string) (closeit :int)))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFileExFlags" :int ((fp :file) (filename :string) (closeit :int) (flags compiler-flags)))
-(defpyfun "PyRun_SimpleString" 0-on-success/no-fetch ((command :string)))
+#+requires-CHAR*-ARRAY-support (defpyfun "Py_Main" :int ((argc :int) (argv (:array :string)))) ;canerr
+#+requires-FILE*-support (defpyfun "PyRun_AnyFile"        0-on-success/no-fetch ((fp :file) (filename :string)))
+#+requires-FILE*-support (defpyfun "PyRun_AnyFileFlags"   0-on-success/no-fetch ((fp :file) (filename :string) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_AnyFileEx"      0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int)))
+#+requires-FILE*-support (defpyfun "PyRun_AnyFileExFlags" 0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int) (flags compiler-flags)))
+(defpyfun "PyRun_SimpleString"      0-on-success/no-fetch ((command :string)))
 (defpyfun "PyRun_SimpleStringFlags" 0-on-success/no-fetch ((command :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFile" 0-on-success/no-fetch ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFileFlags" 0-on-success/no-fetch ((fp :file) (filename :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFileEx" 0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int)))
+#+requires-FILE*-support (defpyfun "PyRun_SimpleFile"        0-on-success/no-fetch ((fp :file) (filename :string)))
+#+requires-FILE*-support (defpyfun "PyRun_SimpleFileFlags"   0-on-success/no-fetch ((fp :file) (filename :string) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_SimpleFileEx"      0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int)))
 #+requires-FILE*-support (defpyfun "PyRun_SimpleFileExFlags" 0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int) (flags compiler-flags)))
 ;; FIXME: The Python docs leave me uncertain as to whether these are /no-fetch
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveOne" 0-on-success ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveOneFlags" 0-on-success ((fp :file) (filename :string) (flags compiler-flags)))
-;; FIXME: Can these produce an error code, or do they always return 0?
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveLoop" :int ((fp :file) (filename :string))) ; canerr?
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveLoopFlags" :int ((fp :file) (filename :string) (flags compiler-flags))) ; canerr?
+#+requires-FILE*-support (defpyfun "PyRun_InteractiveOne"       0-on-success ((fp :file) (filename :string)))
+#+requires-FILE*-support (defpyfun "PyRun_InteractiveOneFlags"  0-on-success ((fp :file) (filename :string) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_InteractiveLoop"      0-on-success ((fp :file) (filename :string)))
+#+requires-FILE*-support (defpyfun "PyRun_InteractiveLoopFlags" 0-on-success ((fp :file) (filename :string) (flags compiler-flags)))
 
-(defpyfun "PyParser_SimpleParseString" :pointer ((str :string) (start :int)))
-(defpyfun "PyParser_SimpleParseStringFlags" :pointer ((str :string) (start :int) (flags :int)))
-(defpyfun "PyParser_SimpleParseStringFlagsFilename" :pointer ((str :string) (filename :string) (start :int) (flags :int)))
-#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFile" :pointer ((fp :file) (filename :string) (start :int)))
-#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFileFlags" :pointer ((fp :file) (filename :string) (start :int) (flags :int)))
+(defctype .node (can-error :pointer))
+(defpyfun "PyParser_SimpleParseString"              .node ((str :string) (start :int)))
+(defpyfun "PyParser_SimpleParseStringFlags"         .node ((str :string) (start :int) (flags :int)))
+(defpyfun "PyParser_SimpleParseStringFlagsFilename" .node ((str :string) (filename :string) (start :int) (flags :int)))
+#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFile"      .node ((fp :file) (filename :string) (start :int)))
+#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFileFlags" .node ((fp :file) (filename :string) (start :int) (flags :int)))
 
-(defpyfun "PyRun_String" (can-error object) ((str :string) (start :int) (globals dict) (locals dict)))
-(defpyfun "PyRun_StringFlags" (can-error object) ((str :string) (start :int) (globals dict) (locals dict) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_File" (can-error object) ((fp :file) (filename :string) (start :int) (globals object) (locals object)))
-#+requires-FILE*-support (defpyfun "PyRun_FileEx" (can-error object) ((fp :file) (filename :string) (start :int) (globals object) (locals object) (closeit :int)))
-#+requires-FILE*-support (defpyfun "PyRun_FileFlags" (can-error object) ((fp :file) (filename :string) (start :int) (globals object) (locals object) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_FileExFlags" (can-error object) ((fp :file) (filename :string) (start :int) (globals object) (locals object) (closeit :int) (flags compiler-flags)))
+(defpyfun "PyRun_String"      object! ((str :string) (start :int) (globals dict) (locals dict)))
+(defpyfun "PyRun_StringFlags" object! ((str :string) (start :int) (globals dict) (locals dict) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_File"        object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict)))
+#+requires-FILE*-support (defpyfun "PyRun_FileEx"      object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict) (closeit :int)))
+#+requires-FILE*-support (defpyfun "PyRun_FileFlags"   object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_FileExFlags" object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict) (closeit :int) (flags compiler-flags)))
 
 (defctype code-object :pointer)
-(defpyfun "Py_CompileString" (can-error code-object) ((str :string) (filename :string) (start :int)))
+(defpyfun "Py_CompileString"      (can-error code-object) ((str :string) (filename :string) (start :int)))
 (defpyfun "Py_CompileStringFlags" (can-error code-object) ((str :string) (filename :string) (start :int) (flags compiler-flags)))
-(defpyfun "PyEval_EvalCode" (can-error object) ((co code-object) (globals object) (locals object)))
-#+requires-POINTER-ARRAY-support (defpyfun "PyEval_EvalCodeEx" (can-error object) ((co code-object) (globals object) (locals object) (args (:array object)) (argcount :int) (kws (:array object)) (kwcount :int) (defs (:array object)) (defcount :int) (closure object)))
-(defpyfun "PyEval_EvalFrame" (can-error object) ((f frame-object)))
-(defpyfun "PyEval_EvalFrameEx" (can-error object) ((f frame-object) (throwflag :int)))
+(defpyfun "PyEval_EvalCode"    object! ((co code-object) (globals dict) (locals dict)))
+#+requires-POINTER-ARRAY-support (defpyfun "PyEval_EvalCodeEx"  object! ((co code-object) (globals dict) (locals dict) (args (:array object)) (argcount :int) (kws (:array object)) (kwcount :int) (defs (:array object)) (defcount :int) (closure object)))
+(defpyfun "PyEval_EvalFrame"   object! ((f frame-object)))
+(defpyfun "PyEval_EvalFrameEx" object! ((f frame-object) (throwflag :int)))
 (defpyfun "PyEval_MergeCompilerFlags" :boolean ((cf compiler-flags)))
 
 ;;;; Memory Management
@@ -567,42 +718,43 @@
       (err.clear))))
 
 ;;; Python Error API (most of these which return a value are canerr, I think)
+(defctype always-error object!)
 (defpyfun "PyErr_PrintEx" :void ((set-sys-last-vars :int)))
-(defpyfun "PyErr_Print" :void ())
+(defpyfun "PyErr_Print"   :void ())
 (defpyfun "PyErr_Occurred" (object :borrowed) ())
-(defpyfun "PyErr_ExceptionMatches" :int ((exc object)))
-(defpyfun "PyErr_GivenExceptionMatches" :int ((given object) (exc object)))
+(defpyfun "PyErr_ExceptionMatches"      :boolean ((exc object)))
+(defpyfun "PyErr_GivenExceptionMatches" :boolean ((given object) (exc object)))
 #+requires-call-by-reference-support (defpyfun "PyErr_NormalizeException" :void ((exc (:ref object)) (val (:ref object)) (tb (:ref object))))
 (defpyfun "PyErr_Clear" :void ())
 #+requires-call-by-reference-support (defpyfun "PyErr_Fetch" :void ((ptype (:ref object)) (pvalue (:ref object)) (ptraceback (:ref object))))
 (defpyfun "PyErr_Restore" :void ((type object) (value object) (traceback object)))
 (defpyfun "PyErr_SetString" :void ((type object) (message :string)))
 (defpyfun "PyErr_SetObject" :void ((type object) (value object)))
-(defpyfun "PyErr_Format" (can-error object) ((exception object) (format :string) &rest)) ; more like always-errors! :)
+(defpyfun "PyErr_Format" always-error ((exception object) (format :string) &rest))
 (defpyfun "PyErr_SetNone" :void ((type object)))
 (defpyfun "PyErr_BadArgument" :int ())
-(defpyfun "PyErr_NoMemory" object ())
-(defpyfun "PyErr_SetFromErrno" object ((type object)))
-(defpyfun "PyErr_SetFromErrnoWithFilename" object ((type object) (filename :string)))
-(defpyfun "PyErr_SetFromWindowsErr" object ((ierr :int)) :requires-windows)
-(defpyfun "PyErr_SetExcFromWindowsErr" object ((type object) (ierr :int)) :requires-windows)
-(defpyfun "PyErr_SetFromWindowsErrWithFilename" object ((ierr :int) (filename :string)) :requires-windows)
-(defpyfun "PyErr_SetExcFromWindowsErrWithFilename" object ((type object) (ierr :int) (filename :string)) :requires-windows)
+(defpyfun "PyErr_NoMemory" always-error ())
+(defpyfun "PyErr_SetFromErrno"             always-error ((type object)))
+(defpyfun "PyErr_SetFromErrnoWithFilename" always-error ((type object) (filename :string)))
+(defpyfun "PyErr_SetFromWindowsErr"                always-error ((ierr :int)) :requires-windows)
+(defpyfun "PyErr_SetExcFromWindowsErr"             always-error ((type object) (ierr :int)) :requires-windows)
+(defpyfun "PyErr_SetFromWindowsErrWithFilename"    always-error ((ierr :int) (filename :string)) :requires-windows)
+(defpyfun "PyErr_SetExcFromWindowsErrWithFilename" always-error ((type object) (ierr :int) (filename :string)) :requires-windows)
 (defpyfun "PyErr_BadInternalCall" :void ())
-(defpyfun "PyErr_WarnEx" :int ((category object) (message :string) (stacklevel :int)))
-(defpyfun "PyErr_Warn" :int ((category object) (message :string)))
-(defpyfun "PyErr_WarnExplicit" :int ((category object) (message :string) (filename :string) (lineno :int) (module :string) (registry object)))
+(defpyfun "PyErr_WarnEx" 0-on-success ((category object) (message :string) (stacklevel :int)))
+(defpyfun "PyErr_Warn"   0-on-success ((category object) (message :string)))
+(defpyfun "PyErr_WarnExplicit" :int ((category object) (message :string) (filename :string) (lineno :int) (module :string) (registry object))) ; FIXME: what's the return value mean?
 (defcvar ("Py_Py3kWarningFlag" *err.warn-py3k*) :boolean)
 (defpyvar "PyExc_DeprecationWarning")
-(defpyfun "PyErr_WarnPy3k" :int ((message :string) (stacklevel :int))
+(defpyfun "PyErr_WarnPy3k" 0-on-success ((message :string) (stacklevel :int))
   (if *err.warn-py3k* (err.warn-ex +exc.deprecation-warning+ message stacklevel) 0))
-(defpyfun "PyErr_CheckSignals" :int ())
+(defpyfun "PyErr_CheckSignals" 0-on-success ())
 (defpyfun "PyErr_SetInterrupt" :void ())
-(defpyfun "PySignal_SetWakeupFd" :int ((fd :int)) :requires-python-2.6)
-(defpyfun "PyErr_NewException" object ((name :string) (base object) (dict object)))
-(defpyfun "PyErr_NewExceptionWithDoc" object ((name :string) (doc :string) (base object) (dict object))
+(defpyfun "PySignal_SetWakeupFd" :int ((fd :int)) :requires-python-2.6) ; FIXME: return value means...?
+(defpyfun "PyErr_NewException"        object ((name :string) (base object) (dict dict)))
+(defpyfun "PyErr_NewExceptionWithDoc" object ((name :string) (doc :string) (base object) (dict dict))
   (declare (ignore doc))
-  (err.new-exception name base dict))
+  (err.new-exception* name base dict))
 (defpyfun "PyErr_WriteUnraisable" :void ((obj object)))
 
 ;;; Unicode Exceptions
@@ -611,38 +763,32 @@
 (defpyfun "PyUnicodeTranslateError_Create" object ((object unicode) (length ssize-t) (start ssize-t) (end ssize-t) (reason :string)))
 (defpyfun "PyUnicodeDecodeError_GetEncoding" object ((exc object)))
 (defpyfun "PyUnicodeEncodeError_GetEncoding" object ((exc object)))
-(defpyfun "PyUnicodeDecodeError_GetObject" object ((exc object)))
-(defpyfun "PyUnicodeEncodeError_GetObject" object ((exc object)))
+(defpyfun "PyUnicodeDecodeError_GetObject"    object ((exc object)))
+(defpyfun "PyUnicodeEncodeError_GetObject"    object ((exc object)))
 (defpyfun "PyUnicodeTranslateError_GetObject" object ((exc object)))
-;; below are canerr
-#+(or) ;; how to handle pointer to size?
-(defpyfun "PyUnicodeDecodeError_GetStart" :int ((exc object) (start (:pointer ssize-t))))
-#+(or) ;; how to handle pointer to size?
-(defpyfun "PyUnicodeEncodeError_GetStart" :int ((exc object) (start (:pointer ssize-t))))
-#+(or) ;; how to handle pointer to size?
-(defpyfun "PyUnicodeTranslateError_GetStart" :int ((exc object) (start (:pointer ssize-t))))
-(defpyfun "PyUnicodeDecodeError_SetStart" :int ((exc object) (start ssize-t)))
-(defpyfun "PyUnicodeEncodeError_SetStart" :int ((exc object) (start ssize-t)))
-(defpyfun "PyUnicodeTranslateError_SetStart" :int ((exc object) (start ssize-t)))
-#+(or) ;; how to handle pointer to size?
-(defpyfun "PyUnicodeDecodeError_GetEnd" :int ((exc object) (end (:pointer ssize-t))))
-#+(or) ;; how to handle pointer to size?
-(defpyfun "PyUnicodeEncodeError_GetEnd" :int ((exc object) (end (:pointer ssize-t))))
-#+(or) ;; how to handle pointer to size?
-(defpyfun "PyUnicodeTranslateError_GetEnd" :int ((exc object) (end (:pointer ssize-t))))
-(defpyfun "PyUnicodeDecodeError_SetEnd" :int ((exc object) (end ssize-t)))
-(defpyfun "PyUnicodeEncodeError_SetEnd" :int ((exc object) (end ssize-t)))
-(defpyfun "PyUnicodeTranslateError_SetEnd" :int ((exc object) (end ssize-t)))
-;; end of canerr
-(defpyfun "PyUnicodeDecodeError_GetReason" object ((exc object)))
-(defpyfun "PyUnicodeEncodeError_GetReason" object ((exc object)))
+#+requires-call-by-reference-support (defpyfun "PyUnicodeDecodeError_GetStart"    0-on-success ((exc object) (start (:pointer ssize-t))))
+#+requires-call-by-reference-support (defpyfun "PyUnicodeEncodeError_GetStart"    0-on-success ((exc object) (start (:pointer ssize-t))))
+#+requires-call-by-reference-support (defpyfun "PyUnicodeTranslateError_GetStart" 0-on-success ((exc object) (start (:pointer ssize-t))))
+(defpyfun "PyUnicodeDecodeError_SetStart"    0-on-success ((exc object) (start ssize-t)))
+(defpyfun "PyUnicodeEncodeError_SetStart"    0-on-success ((exc object) (start ssize-t)))
+(defpyfun "PyUnicodeTranslateError_SetStart" 0-on-success ((exc object) (start ssize-t)))
+#+requires-call-by-reference-support (defpyfun "PyUnicodeDecodeError_GetEnd"    0-on-success ((exc object) (end (:pointer ssize-t))))
+#+requires-call-by-reference-support (defpyfun "PyUnicodeEncodeError_GetEnd"    0-on-success ((exc object) (end (:pointer ssize-t))))
+#+requires-call-by-reference-support (defpyfun "PyUnicodeTranslateError_GetEnd" 0-on-success ((exc object) (end (:pointer ssize-t))))
+(defpyfun "PyUnicodeDecodeError_SetEnd"    0-on-success ((exc object) (end ssize-t)))
+(defpyfun "PyUnicodeEncodeError_SetEnd"    0-on-success ((exc object) (end ssize-t)))
+(defpyfun "PyUnicodeTranslateError_SetEnd" 0-on-success ((exc object) (end ssize-t)))
+(defpyfun "PyUnicodeDecodeError_GetReason"    object ((exc object)))
+(defpyfun "PyUnicodeEncodeError_GetReason"    object ((exc object)))
 (defpyfun "PyUnicodeTranslateError_GetReason" object ((exc object)))
-;; more canerr
-(defpyfun "PyUnicodeDecodeError_SetReason" :int ((exc object) (reason :string)))
-(defpyfun "PyUnicodeEncodeError_SetReason" :int ((exc object) (reason :string)))
-(defpyfun "PyUnicodeTranslateError_SetReason" :int ((exc object) (reason :string)))
-#+TODO.really-a-#define (defpyfun "Py_EnterRecursiveCall" :int ((where :string)))
-#+TODO.really-a-#define (defpyfun "Py_LeaveRecursiveCall" :void ())
+(defpyfun "PyUnicodeDecodeError_SetReason"    0-on-success ((exc object) (reason :string)))
+(defpyfun "PyUnicodeEncodeError_SetReason"    0-on-success ((exc object) (reason :string)))
+(defpyfun "PyUnicodeTranslateError_SetReason" 0-on-success ((exc object) (reason :string)))
+;; TODO: Probably just have a with-recursive-call macro, instead of these
+;;       functions.  Of course, they'd still need to be defined for the
+;;       macro's use.
+#+really-a-#define (defpyfun "Py_EnterRecursiveCall" 0-on-success ((where :string)))
+#+really-a-#define (defpyfun "Py_LeaveRecursiveCall" :void ())
 
 ;;; Exception Variables
 ;; TODO: Create a defpyexception macro which allows us to convert between
@@ -684,61 +830,320 @@
 ;;;; TODO: String Conversion and Formatting
 ;;;; TODO: Reflection
 ;;;; TODO: Codec Registry and Support Functions, Codec Lookup API, Registry API for Unicode Errors
-
+
 ;;;; Abstract Objects
-#+requires-FILE*-support
-(defpyfun "PyObject_Print" :int ((o object) (fp :file) (flags :int)))
-(defpyfun "PyObject_HasAttr" :int ((o object) (attr-name object)))
-(defpyfun "PyObject_HasAttrString" :int ((o object) (attr-name :string)))
-(defpyfun "PyObject_GetAttr" object ((o object) (attr-name object)))
-(defpyfun "PyObject_GetAttrString" object ((o object) (attr-name :string)))
-(defpyfun "PyObject_GenericGetAttr" object ((o object) (name object)))
-(defpyfun "PyObject_SetAttr" :int ((o object) (attr-name object) (v object)))
-(defpyfun "PyObject_SetAttrString" :int ((o object) (attr-name :string) (v object)))
-(defpyfun "PyObject_GenericSetAttr" :int ((o object) (name object) (value object)))
-(defpyfun "PyObject_DelAttr" :int ((o object) (attr-name object))
-  (object.set-attr o attr-name (null-pointer)))
-(defpyfun "PyObject_DelAttrString" :int ((o object) (attr-name :string))
-  (object.set-attr-string o attr-name (null-pointer)))
-(defpyfun "PyObject_RichCompare" object ((o1 object) (o2 object) (opid :int)))
-(defpyfun "PyObject_RichCompareBool" :int ((o1 object) (o2 object) (opid :int)))
-#+requires-call-by-reference-support (defpyfun "PyObject_Cmp" :int ((o1 object) (o2 object) (result (:ref :int))))
-(defpyfun "PyObject_Compare" :int ((o1 object) (o2 object)))
-(defpyfun "PyObject_Repr" object ((o object)))
-(defpyfun "PyObject_Str" object ((o object)))
-#+(or) ; FIXME: This wouldn't account for the difference between .str and .str*
-       ;        Maybe fix by giving the expansion a want-ptr variable to check?
-(defpyfun "PyObject_Bytes" object ((o object))
-  (object.str o))
-(defpyfun "PyObject_Unicode" object ((o object)))
-(defpyfun "PyObject_IsInstance" :int ((inst object) (cls object)))
-(defpyfun "PyObject_IsSubclass" :int ((derived object) (cls object)))
-(defpyfun "PyCallable_Check" :int ((o object)))
-(defpyfun "PyObject_Call" object ((callable-object object) (args object) (kw object)))
-(defpyfun "PyObject_CallObject" object ((callable-object object) (args object)))
-(defpyfun "PyObject_CallFunction" object ((callable object) (format :string) &rest))
-(defpyfun "PyObject_CallMethod" object ((o object) (method :string) (format :string) &rest))
-#+(or) ;; last arg must be NULL
-(defpyfun "PyObject_CallFunctionObjArgs" object ((callable object) &rest #+(or) <NULL>))
-#+(or) ;; last arg must be NULL
-(defpyfun "PyObject_CallMethodObjArgs" object ((o object) (name object) &rest #+(or) <NULL>))
-(defpyfun "PyObject_Hash" :long ((o object)))
-(defpyfun "PyObject_HashNotImplemented" :long ((o object)))
-(defpyfun "PyObject_IsTrue" :int ((o object)))
-(defpyfun "PyObject_Not" :int ((o object)))
-(defpyfun "PyObject_Type" object ((o object)))
-(defpyfun "PyObject_TypeCheck" :boolean ((o object) (type type-object))
-  (or (%object.type-check-exact o type) (type.is-subtype (%object.type o) type)))
-(defpyfun "PyObject_Length" ssize-t ((o object)))
-(defpyfun "PyObject_Size" ssize-t ((o object)))
-(defpyfun "PyObject_GetItem" object ((o object) (key object)))
-(defpyfun "PyObject_SetItem" :int ((o object) (key object) (v object)))
-(defpyfun "PyObject_DelItem" :int ((o object) (key object)))
-(defpyfun "PyObject_AsFileDescriptor" :int ((o object)))
-(defpyfun "PyObject_Dir" object ((o object)))
-(defpyfun "PyObject_GetIter" object ((o object)))
 
-;;;; TODO: Concrete Objects
+;;; Object Protocol
+#+requires-FILE*-support (defpyfun "PyObject_Print" :int ((o object) (fp :file) (flags :int)))
+(defpyfun "PyObject_HasAttr"       :boolean ((o object) (attr-name object)))
+(defpyfun "PyObject_HasAttrString" :boolean ((o object) (attr-name :string)))
+(defpyfun "PyObject_GetAttr"        object! ((o object) (attr-name object)))
+(defpyfun "PyObject_GetAttrString"  object! ((o object) (attr-name :string)))
+(defpyfun "PyObject_GenericGetAttr" object! ((o object) (name object))) ; FIXME: docs don't specify canerr or new/borrowed
+(defpyfun "PyObject_SetAttr"        0-on-success ((o object) (attr-name object)  (v object)))
+(defpyfun "PyObject_SetAttrString"  0-on-success ((o object) (attr-name :string) (v object)))
+(defpyfun "PyObject_GenericSetAttr" 0-on-success ((o object) (name object) (value object)))
+(defpyfun "PyObject_DelAttr" 0-on-success ((o object) (attr-name object))
+  (object.set-attr o attr-name (null-pointer)))
+(defpyfun "PyObject_DelAttrString" 0-on-success ((o object) (attr-name :string))
+  (object.set-attr-string o attr-name (null-pointer)))
+(defpyfun "PyObject_RichCompare"     object! ((o1 object) (o2 object) (opid :int)))
+(defpyfun "PyObject_RichCompareBool" boolean! ((o1 object) (o2 object) (opid :int)))
+#+requires-call-by-reference-support (defpyfun "PyObject_Cmp" boolean! ((o1 object) (o2 object) (result (:ref :int))))
+(defpyfun "PyObject_Compare" boolean! ((o1 object) (o2 object)))
+(defpyfun "PyObject_Repr" object! ((o object)))
+(defpyfun "PyObject_Str"  object! ((o object)))
+(defpyfun "PyObject_Bytes" object! ((o object))
+  (object.str* o))
+(defpyfun "PyObject_Unicode" object! ((o object)))
+(defpyfun "PyObject_IsInstance" boolean! ((inst    object) (cls object)))
+(defpyfun "PyObject_IsSubclass" boolean! ((derived object) (cls object)))
+(defpyfun "PyCallable_Check" :boolean ((o object)))
+(defpyfun "PyObject_Call"         object! ((callable-object object) (args object) (kw object)))
+(defpyfun "PyObject_CallObject"   object! ((callable-object object) (args object)))
+;; FIXME: how do we get conversion for &rest arguments?
+(defpyfun "PyObject_CallFunction" object! ((callable object) (format :string) &rest))
+(defpyfun "PyObject_CallMethod"   object! ((o object) (method :string) (format :string) &rest))
+#+requires-arg-after-&rest (defpyfun "PyObject_CallFunctionObjArgs" object! ((callable object) &rest #+(or) <NULL>))
+#+requires-arg-after-&rest (defpyfun "PyObject_CallMethodObjArgs"   object! ((o object) (name object) &rest #+(or) <NULL>))
+(defpyfun "PyObject_Hash" (can-error :long) ((o object)))
+(defpyfun "PyObject_HashNotImplemented" (can-error :long) ((o object)))
+(defpyfun "PyObject_IsTrue" boolean! ((o object)))
+(defpyfun "PyObject_Not"    boolean! ((o object)))
+(defpyfun "PyObject_Type" object! ((o object)))
+(defpyfun "PyObject_TypeCheck" :boolean ((o object) (type type))
+  (if (or (%object.type-check-exact o type) (type.is-subtype (%object.type o) type)) 1 0))
+(defpyfun "PyObject_Length" ssize-t! ((o object)))
+(defpyfun "PyObject_Size"   ssize-t! ((o object)))
+(defpyfun "PyObject_GetItem" object! ((o object) (key object)))
+(defpyfun "PyObject_SetItem" 0-on-success ((o object) (key object) (v object)))
+(defpyfun "PyObject_DelItem" 0-on-success ((o object) (key object)))
+(defpyfun "PyObject_DelItemString" 0-on-success ((o object) (key :string)))
+(defpyfun "PyObject_AsFileDescriptor" (can-error :int) ((o object)))
+(defpyfun "PyObject_Dir" list! ((o object)))
+(defpyfun "PyObject_GetIter" object! ((o object)))
+
+;;; Number Protocol
+(defpyfun "PyNumber_Check" :boolean ((o object)))
+(defpyfun "PyNumber_Add"         object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Subtract"    object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Multiply"    object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Divide"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_FloorDivide" object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_TrueDivide"  object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Remainder"   object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Divmod"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Power"       object! ((o1 object) (o2 object) (o3 object))) ; o3 optional; but must pass Py_None, not NULL
+(defpyfun "PyNumber_Negative"    object! ((o object)))
+(defpyfun "PyNumber_Positive"    object! ((o object)))
+(defpyfun "PyNumber_Absolute"    object! ((o object)))
+(defpyfun "PyNumber_Invert"      object! ((o object)))
+(defpyfun "PyNumber_Lshift"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Rshift"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_And"         object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Xor"         object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_Or"          object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceAdd"         object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceSubtract"    object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceMultiply"    object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceDivide"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceFloorDivide" object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceTrueDivide"  object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceRemainder"   object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlacePower"       object! ((o1 object) (o2 object) (o3 object))) ; o3 optional; pass Py_None not NULL
+(defpyfun "PyNumber_InPlaceLshift"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceRshift"      object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceAnd"         object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceXor"         object! ((o1 object) (o2 object)))
+(defpyfun "PyNumber_InPlaceOr"          object! ((o1 object) (o2 object)))
+#+requires-call-by-reference-support (defpyfun "PyNumber_Coerce"   0-on-success ((p1 (:ref object)) (p2 (:ref object))))
+#+requires-call-by-reference-support (defpyfun "PyNumber_CoerceEx" 0-on-success ((p1 (:ref object)) (p2 (:ref object))))
+(defpyfun "PyNumber_Int"    object! ((o object)))
+(defpyfun "PyNumber_Long"   object! ((o object)))
+(defpyfun "PyNumber_Float"  object! ((o object)))
+(defpyfun "PyNumber_Index"  object! ((o object)))
+(defpyfun "PyNumber_ToBase" object! ((n object) (base :int)))
+(defpyfun "PyNumber_AsSsize_t" ssize-t ((o object) (exc object)))
+(defpyfun "PyIndex_Check" :boolean ((o object))
+  (if (number.check o) 1 0))
+
+;;; Sequence Protocol
+(defpyfun "PySequence_Check" :boolean ((o object)))
+(defpyfun "PySequence_Size"   ssize-t! ((o object)))
+(defpyfun "PySequence_Length" ssize-t! ((o object)))
+(defpyfun "PySequence_Concat" object! ((o1 object) (o2 object)))
+(defpyfun "PySequence_Repeat" object! ((o object) (count ssize-t)))
+(defpyfun "PySequence_InPlaceConcat" object! ((o1 object) (o2 object)))
+(defpyfun "PySequence_InPlaceRepeat" object! ((o object) (count ssize-t)))
+(defpyfun "PySequence_GetItem"  object! ((o object) (i ssize-t)))
+(defpyfun "PySequence_GetSlice" object! ((o object) (i1 ssize-t) (i2 ssize-t)))
+(defpyfun "PySequence_SetItem" 0-on-success ((o object) (i ssize-t) (v object)))
+(defpyfun "PySequence_DelItem" 0-on-success ((o object) (i ssize-t)))
+(defpyfun "PySequence_SetSlice" 0-on-success ((o object) (i1 ssize-t) (i2 ssize-t) (v object)))
+(defpyfun "PySequence_DelSlice" 0-on-success ((o object) (i1 ssize-t) (i2 ssize-t)))
+(defpyfun "PySequence_Count"    ssize-t! ((o object) (value object)))
+(defpyfun "PySequence_Contains" boolean! ((o object) (value object)))
+(defpyfun "PySequence_Index" ssize-t! ((o object) (value object)))
+(defpyfun "PySequence_List"  object! ((o object)))
+(defpyfun "PySequence_Tuple" object! ((o object)))
+(defpyfun "PySequence_Fast"  object! ((o object) (m :string)))
+(defpyfun "PySequence_Fast_GET_ITEM" object! ((o object) (i ssize-t))
+  (cond ((list.check  o) (list.get-item*  o i))
+        ((tuple.check o) (tuple.get-item* o i))
+        (t (sequence.get-item* o i))))
+#+requires-POINTER-ARRAY-support (defpyfun "PySequence_Fast_ITEMS" (:array object) ((o object)))
+(defpyfun "PySequence_ITEM" object! ((o object) (i ssize-t))
+  (sequence.get-item* o i))
+(defpyfun "PySequence_Fast_GET_SIZE" ssize-t! ((o object))
+  (cond ((list.check o)  (list.size  o))
+        ((tuple.check o) (tuple.size o))
+        (t (sequence.size o))))
+
+;;; Mapping Protocol
+(defpyfun "PyMapping_Check"  :boolean ((o object)))
+(defpyfun "PyMapping_Size"   ssize-t! ((o object)))
+(defpyfun "PyMapping_Length" ssize-t! ((o object)))
+(defpyfun "PyMapping_DelItemString" 0-on-success ((o object) (key :string))
+  (object.del-item-string o key))
+(defpyfun "PyMapping_DelItem"       0-on-success ((o object) (key object))
+  (object.del-item o key))
+(defpyfun "PyMapping_HasKeyString" :boolean ((o object) (key :string)))
+(defpyfun "PyMapping_HasKey"       :boolean ((o object) (key object)))
+(defpyfun "PyMapping_Keys"   list! ((o object))
+  (object.call-method* o "keys"   (null-pointer)))
+(defpyfun "PyMapping_Values" list! ((o object))
+  (object.call-method* o "values" (null-pointer)))
+(defpyfun "PyMapping_Items"  list! ((o object))
+  (object.call-method* o "items"  (null-pointer)))
+(defpyfun "PyMapping_GetItemString" object!      ((o object) (key :string)))
+(defpyfun "PyMapping_SetItemString" 0-on-success ((o object) (key :string) (v object)))
+
+;;; Iterator Protocol
+(defpyfun "PyIter_Check" :boolean ((o object))
+  (let ((otype (foreign-slot-value o '%object 'type)))
+    (if (and (type.has-feature otype +tpflags.have-iter+)
+             (not (null-pointer-p (foreign-slot-value o '%type 'iternext))))
+        1 0)))
+(defpyfun "PyIter_Next"  object?  ((o object)))
+
+;;; Old Buffer Protocol (Skipped)
+
+;;;; Concrete Objects
+
+;;;; Fundamental Objects
+;;; Type Objects
+(defpyfun "PyType_ClearCache" :uint ())
+(defpyfun "PyType_Modified" :void ((type type)))
+(defpyfun "PyType_HasFeature" :boolean ((o object) (feature :int))
+  (logand feature (foreign-slot-value o '%type 'flags)))
+(defpyfun "PyType_IS_GC"      :boolean ((o object))
+  (if (type.has-feature o +tpflags.have-gc+) 1 0))
+(defpyfun "PyType_IsSubtype"  :boolean ((a type) (b type)))
+(defpyfun "PyType_GenericAlloc" object! ((type type) (nitems ssize-t)))
+(defpyfun "PyType_GenericNew"   object! ((type type) (args object) (kwds object)))
+(defpyfun "PyType_Ready"   0-on-success ((type type)))
+
+;;; The None Object
+;;; (no functions)
+
+;;;; Numeric Objects
+;;; Plain Integer Objects
+#+requires-call-by-reference-support (defpyfun "PyInt_FromString"  object! ((str :string) (pend (:ref :string)) (base :int)))
+(defpyfun "PyInt_FromLong"    int! ((ival :long)))
+(defpyfun "PyInt_FromSsize_t" int! ((ival ssize-t)))
+(defpyfun "PyInt_FromSize_t"  int! ((ival size-t)))
+(defpyfun "PyInt_AsLong"  :long ((io object)))
+(defpyfun "PyInt_AsUnsignedLongMask"     :ulong              ((io object)))
+(defpyfun "PyInt_AsUnsignedLongLongMask" :unsigned-long-long ((io object)))
+(defpyfun "PyInt_AsSsize_t"              ssize-t             ((io object)))
+(defpyfun "PyInt_GetMax" :long ())
+(defpyfun "PyInt_ClearFreeList" :int ())
+
+;;; Boolean Objects
+(defpyfun "PyBool_FromLong" bool! ((v :long)))
+
+;;; Long Integer Objects
+(defpyfun "PyLong_FromLong"             long! ((v :long)))
+(defpyfun "PyLong_FromUnsignedLong"     long! ((v :ulong)))
+(defpyfun "PyLong_FromSsize_t"          long! ((v ssize-t)))
+(defpyfun "PyLong_FromSize_t"           long! ((v size-t)))
+(defpyfun "PyLong_FromLongLong"         long! ((v :long-long)))
+(defpyfun "PyLong_FromUnsignedLongLong" long! ((v :unsigned-long-long)))
+(defpyfun "PyLong_FromDouble"           long! ((v :double)))
+#+requires-call-by-reference-support (defpyfun "PyLong_FromString"           long! ((str :string) (pend (:ref :string)) (base :int)))
+(defpyfun "PyLong_FromUnicode"          long! ((u unicode) (length ssize-t) (base :int)))
+#+requires-VOID*-support (defpyfun "PyLong_FromVoidPtr"          long! ((p (:pointer :void))))
+(defpyfun "PyLong_AsLong"                 (soft-error :long)               ((pylong object)))
+#+requires-call-by-reference-support (defpyfun "PyLong_AsLongAndOverflow"      (soft-error :long)               ((pylong object) (overflow (:pointer :int))))
+#+requires-call-by-reference-support (defpyfun "PyLong_AsLongLongAndOverflow"  (soft-error :long-long)          ((pylong object) (overflow (:pointer :int))))
+(defpyfun "PyLong_AsSsize_t"              (soft-error ssize-t)             ((pylong object)))
+(defpyfun "PyLong_AsUnsignedLong"         (soft-error :ulong)              ((pylong object)))
+(defpyfun "PyLong_AsLongLong"             (soft-error :long-long)          ((pylong object)))
+(defpyfun "PyLong_AsUnsignedLongLong"     (soft-error :unsigned-long-long) ((pylong object)))
+(defpyfun "PyLong_AsUnsignedLongMask"     :ulong                           ((io object)))
+(defpyfun "PyLong_AsUnsignedLongLongMask" :unsigned-long-long              ((io object)))
+(defpyfun "PyLong_AsDouble"               (soft-error :double)             ((pylong object)))
+#+requires-VOID*-support (defpyfun "PyLong_AsVoidPtr"              (can-error (:pointer :void))     ((pylong object)))
+
+;;; Floating Point Objects
+#+requires-call-by-reference-support (defpyfun "PyFloat_FromString" object! ((str object) (pend (:ref :string))))
+(defpyfun "PyFloat_FromDouble" float! ((v :double)))
+(defpyfun "PyFloat_AsDouble" (soft-error :double) ((pyfloat object)))
+(defpyfun "PyFloat_GetInfo" object! ())
+(defpyfun "PyFloat_GetMax" :double ())
+(defpyfun "PyFloat_GetMin" :double ())
+(defpyfun "PyFloat_ClearFreeList" :int ())
+
+;;; Complex Number Objects
+#+requires-FSBV-support (defpyfun "_Py_c_sum"  %complex ((left %complex) (right %complex)))
+#+requires-FSBV-support (defpyfun "_Py_c_diff" %complex ((left %complex) (right %complex)))
+#+requires-FSBV-support (defpyfun "_Py_c_neg"  %complex ((complex %complex)))
+#+requires-FSBV-support (defpyfun "_Py_c_prod" %complex ((left %complex) (right %complex)))
+#+requires-FSBV-support (defpyfun "_Py_c_quot" %complex ((dividend %complex) (divisor %complex)))
+#+requires-FSBV-support (defpyfun "_Py_c_pow"  %complex ((num %complex) (exp %complex)))
+#+requires-FSBV-support (defpyfun "PyComplex_FromCComplex" object! ((v %complex)))
+(defpyfun "PyComplex_FromDoubles" complex! ((real :double) (imag :double)))
+(defpyfun "PyComplex_RealAsDouble" (soft-error :double) ((op object)))
+(defpyfun "PyComplex_ImagAsDouble" (soft-error :double) ((op object)))
+#+requires-FSBV-support (defpyfun "PyComplex_AsCComplex" (soft-error %complex!) ((op object)))
+
+;;;; Sequence Objects
+;;; Byte Array Objects
+(defpyfun "PyByteArray_FromObject"        byte-array! ((o object)))
+(defpyfun "PyByteArray_FromStringAndSize" byte-array! ((string octet-array) (len ssize-t)))
+(defpyfun "PyByteArray_Concat" byte-array! ((a object) (b object)))
+(defpyfun "PyByteArray_Size" ssize-t ((bytearray object)))
+(defpyfun ("PyByteArray_AsString" %byte-array.as-string) octet-array ((bytearray object)))
+(defpyfun "PyByteArray_Resize" :int ((bytearray object) (len ssize-t)))
+
+;; We need the size to correctly convert a Python byte-array to a lisp array,
+;; but can't get at it directly from within translate-from-foreign.
+(defun byte-array.as-string (bytearray)
+  (let ((*byte-array.size* (byte-array.size bytearray)))
+    (declare (special *byte-array.size*))
+    (%byte-array.as-string bytearray)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (export 'byte-array.as-string))
+
+;;; String/Bytes Objects
+(defpyfun "PyString_FromString"        string! ((v :string)))
+(defpyfun "PyString_FromStringAndSize" string! ((v :string) (len ssize-t))) ; size is BYTES, not characters!
+(defpyfun "PyString_FromFormat"        string! ((format :string) &rest))
+#+requires-va_list-support (defpyfun "PyString_FromFormatV"       string! ((format :string) (vargs va_list)))
+(defpyfun "PyString_Size" ssize-t! ((string object)))
+(defpyfun "PyString_AsString" :string ((string object)))
+#+requires-call-by-reference-support (defpyfun "PyString_AsStringAndSize" 0-on-success ((obj object) (buffer (:ref :string)) (length (:pointer ssize-t))))
+#+requires-call-by-reference-support (defpyfun "PyString_Concat"       :void ((string (:ref object)) (newpart object)))
+#+requires-call-by-reference-support (defpyfun "PyString_ConcatAndDel" :void ((string (:ref object)) (newpart object)))
+#+requires-call-by-reference-support (defpyfun "_PyString_Resize" 0-on-success ((string (:ref object)) (newsize ssize-t)))
+(defpyfun "PyString_Format" string! ((format object) (args tuple)))
+;; Not in Python 3
+;#+requires-call-by-reference-support (defpyfun "PyString_InternInPlace" :void ((string (:ref object))))
+;(defpyfun "PyString_InternFromString" string! ((v :string)))
+;(defpyfun "PyString_Decode" string! ((s :string) (size ssize-t) (encoding :string) (errors :string)))
+;(defpyfun "PyString_AsDecodedObject" string! ((str object) (encoding :string) (errors :string)))
+;(defpyfun "PyString_Encode" string! ((s :string) (size ssize-t) (encoding :string) (errors :string)))
+;(defpyfun "PyString_AsEncodedObject" string! ((str object) (encoding :string) (errors :string)))
+
+;; TODO PyBytes are #define-aliased to PyString in Python 2
+;(defpyfun "PyBytes_FromString"        bytes! ((v :string)))
+;(defpyfun "PyBytes_FromStringAndSize" bytes! ((v :string) (len ssize-t)))
+;(defpyfun "PyBytes_FromFormat"        bytes! ((format :string) &rest))
+;#+requires-va_list-support (defpyfun "PyBytes_FromFormatV"        bytes! ((format :string) (vargs va_list)))
+;(defpyfun "PyBytes_Size" ssize-t! ((string object)))
+;(defpyfun "PyBytes_AsString" :string ((string object)))
+;#+requires-call-by-reference-support (defpyfun "PyBytes_AsStringAndSize" :int ((obj object) (buffer (:ref :string)) (length (:pointer ssize-t))))
+;#+requires-call-by-reference-support (defpyfun "PyBytes_Concat" :void ((string (:ref object)) (newpart object)))
+;#+requires-call-by-reference-support (defpyfun "PyBytes_ConcatAndDel" :void ((string (:ref object)) (newpart object)))
+;#+requires-call-by-reference-support (defpyfun "_PyBytes_Resize" :int ((string (:ref object)) (newsize ssize-t)))
+;(defpyfun "PyBytes_Format" object! ((format object) (args tuple)))
+
+;;; TODO Unicode Objects
+;;; TODO Buffers and Memoryview Objects
+;;; TODO Tuple Objects
+;;; TODO List Objects
+
+;;;; TODO Mapping Objects
+;;; TODO Dictionary Objects
+
+;;;; TODO Other Objects
+;;; TODO Class and Instance Objects
+;;; TODO Function Objects
+;;; TODO Method Objects
+;;; TODO File Objects
+;;; TODO Module Objects
+;;; TODO Iterator Objects
+;;; TODO Descriptor Objects
+;;; TODO Slice Objects
+;;; TODO Weak Reference Objects
+;;; TODO Capsules
+;;; TODO CObjects
+;;; TODO Cell Objects
+;;; TODO Generator Objects
+;;; TODO DateTime Objects
+;;; TODO Set Objects
+;;; TODO Code Objects
+
 ;;;; TODO: Memory Management
 ;;;; TODO: Object Implementation Support (Allocating, Structures, Types, GC)
 
@@ -752,29 +1157,18 @@
 (defpyfun "PyDict_GetItemString" (object :borrowed) ((d :pointer) (key string)))
 (defpyfun "PyDict_Items" list ((d :pointer)))
 (defpyfun "PyDict_SetItem" :int ((d :pointer) (key object) (val object))) ; canerr
-(defpyfun "PyFloat_AsDouble" :double ((s float)))
-(defpyfun "PyFloat_FromDouble" float ((s :double)))
 (defpyfun "PyImport_GetModuleDict" dict ())
-(defpyfun "PyImport_Import" (can-error object) ((name string)))
+(defpyfun "PyImport_Import" object! ((name string)))
 (defpyfun "PyImport_ImportModule" (can-error :pointer) ((name :string)))
 (defpyfun "PyImport_ImportModuleEx" (can-error :pointer) ((name :string) (globals :pointer) (locals :pointer) (fromlist :pointer))
   (import.import-module-level name globals locals fromlist -1))
 (defpyfun "PyImport_ImportModuleLevel" (can-error :pointer) ((name :string) (globals :pointer) (locals :pointer) (fromlist :pointer) (level :int)))
 (defpyfun "PyImport_AddModule" :pointer ((name :string)))
-(defpyfun "PyType_IsSubtype" :boolean ((a :pointer) (b :pointer)))
-(defpyfun "PyInt_AsLong" :long ((o :pointer)))
-(defpyfun "PyInt_FromLong" int ((i :long)))
 (defpyfun "PyList_New" list ((size :int)))
 (defpyfun "PyList_Size" :int ((lst :pointer)))
 (defpyfun "PyList_GetItem" (object :borrowed) ((lst :pointer) (index :int)))
 (defpyfun "PyList_SetItem" :int ((lst :pointer) (index :int) (o object)))
 (defpyfun "PyModule_GetDict" dict ((m :pointer)))
-(defpyfun "PyString_AsString" :string ((s :pointer)))
-(defpyfun "PyString_FromString" string ((s :string)))
-#+(or) ; We probably want to return an octet array here, not a string
-(defpyfun "PyBytes_AsString" :string ((s :pointer)) (string.as-string s))
-#+(or) ; We probably want to pass in an octet array here, not a string
-(defpyfun "PyBytes_FromString" :pointer ((s :string)) (string.from-string s))
 (defpyfun "PyTuple_New" tuple ((size :int)))
 (defpyfun "PyTuple_Size" :int ((lst :pointer)))
 (defpyfun "PyTuple_GetItem" (object :borrowed) ((lst :pointer) (index :int)))

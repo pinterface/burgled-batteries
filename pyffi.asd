@@ -7,7 +7,7 @@
 (in-package #:pyffi-system)
 
 (defsystem :pyffi
-    :depends-on (:cffi :alexandria)
+    :depends-on (#:cffi #:alexandria #:tcr.parse-declarations-1.0)
     :name "pyffi"
     :author "Dmitri Hrapof <hrapof@common-lisp.ru>"
     :maintainer "pinterface <pix@kepibu.org>"

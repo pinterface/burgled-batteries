@@ -1,5 +1,5 @@
 (defpackage #:python.cffi
-  (:use #:cl #:cffi #:alexandria)
+  (:use #:cl #:cffi #:alexandria #:tcr.parse-declarations-1.0)
   (:import-from #:cffi #:parse-type #:find-type-parser)
   (:shadow #:type #:list #:float #:string #:complex)
   (:export #:.initialize
