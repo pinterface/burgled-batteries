@@ -200,11 +200,6 @@
   ;; CAUTION: tuple of characters may get confused with strings
   (:type (and vector (not cl:string)))
   (:to (value type)
-    #+(or) ;; loop doesn't save any lines here, does it?
-    (loop :with tup = (tuple.new* (length value))
-          :for i :from 0 :to (length value)
-          :do (tup.set-item tup i (svref value i))
-          :finally (return tup))
     (let* ((len (length value))
            (tup (tuple.new* len)))
       (dotimes (i len tup)
@@ -1041,7 +1036,18 @@
      ("PyUnicodeUCS4_Contains" boolean! ((container object) (element object)))))
 
 ;;; TODO Buffers and Memoryview Objects
-;;; TODO Tuple Objects
+
+;;; Tuple Objects
+(defpyfun "PyTuple_New"  tuple! ((len ssize-t)))
+(defpyfun "PyTuple_Pack" tuple! ((n ssize-t) &rest)) ; remaining args are pointers to PyObjects
+(defpyfun "PyTuple_Size" ssize-t! ((p object)))
+(defpyfun "PyTuple_GetItem" (object! :borrowed) ((p tuple) (pos ssize-t)))
+(defpyfun "PyTuple_GetSlice" tuple! ((p tuple) (low ssize-t) (high ssize-t)))
+(defpyfun "PyTuple_SetItem" 0-on-success ((p tuple) (pos ssize-t) (o (object :stolen))))
+#+requires-call-by-reference-support (defpyfun "_PyTuple_Resize" 0-on-success ((p (:ref object)) (newsize ssize-t)))
+(defpyfun "PyTuple_ClearFreeList" :int ()
+  (:requires "Python 2.6 (or newer)"))
+
 ;;; TODO List Objects
 
 ;;;; TODO Mapping Objects
@@ -1090,10 +1096,6 @@
 (defpyfun "PyList_GetItem" (object :borrowed) ((lst :pointer) (index :int)))
 (defpyfun "PyList_SetItem" :int ((lst :pointer) (index :int) (o object)))
 (defpyfun "PyModule_GetDict" dict ((m :pointer)))
-(defpyfun "PyTuple_New" tuple ((size :int)))
-(defpyfun "PyTuple_Size" :int ((lst :pointer)))
-(defpyfun "PyTuple_GetItem" (object :borrowed) ((lst :pointer) (index :int)))
-(defpyfun "PyTuple_SetItem" :int ((lst :pointer) (index :int) (o object)))
 
 #+(or) ;; WARNING: don't trace if lots of data.  (feedparser.parse(my-lj) produces ~195k lines)
 (trace translate-to-foreign translate-from-foreign free-translated-object
