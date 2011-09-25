@@ -17,5 +17,6 @@
     ((:file "packages")
      ;; FIXME: auto-detect location of Python include directory
      (grovel-file "grovel" :cc-flags ("-I/usr/include/python2.6"))
+     (:file "ffi-definers")
      (:file "ffi-interface")
      (:file "api")))
