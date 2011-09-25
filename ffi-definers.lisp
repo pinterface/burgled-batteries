@@ -160,25 +160,26 @@
            (defun ,c-type-check-exact (o)
              #+pyffi.debug (format t "In ~A: ~A~%" ',c-type-check-exact o)
              (%object.type-check-exact o ,lisp-var))
-           (define-parse-method ,lisp-name (&optional (reference-type :new))
-             (make-instance 'foreign-python-type
-                            :actual-type :pointer
-                            :to   #'(lambda (,to-val ,to-type)
-                                      (declare (ignorable ,to-type) (optimize (debug 3)))
-                                      #+pyffi.debug (format t "In translate-to for ~A: ~A, ~A~%" ',lisp-name ,to-val ,to-type)
-                                      ,@to-body)
-                            :from #'(lambda (,from-val ,from-type)
-                                      (declare (ignorable ,to-type) (optimize (debug 3)))
-                                      #+pyffi.debug (format t "In translate-from for ~A: ~A, ~A~%" ',lisp-name ,from-val ,from-type)
-                                      ,@from-body)
-                            :borrowedp (ecase reference-type
-                                         (:new nil)
-                                         (:borrowed t))
-                            :check-ptr #',c-type-check
-                            :check-lisp #'(lambda (v)
-                                            (declare (ignorable v))
-                                            #+pyffi.debug (format t "In check-lisp for ~A: ~A~%" ',lisp-name v)
-                                            ,(when lisp-type `(typep v ',lisp-type)))))
+           (define-parse-method ,lisp-name (&rest options)
+             (let ((reference-type (or (find :borrowed options) (find :new options) :new))
+                   (argument-type (or (find :stolen options) (find :copied options) :copied)))
+               (make-instance 'foreign-python-type
+                              :actual-type :pointer
+                              :to   #'(lambda (,to-val ,to-type)
+                                        (declare (ignorable ,to-type) (optimize (debug 3)))
+                                        #+pyffi.debug (format t "In translate-to for ~A: ~A, ~A~%" ',lisp-name ,to-val ,to-type)
+                                        ,@to-body)
+                              :from #'(lambda (,from-val ,from-type)
+                                        (declare (ignorable ,to-type) (optimize (debug 3)))
+                                        #+pyffi.debug (format t "In translate-from for ~A: ~A, ~A~%" ',lisp-name ,from-val ,from-type)
+                                        ,@from-body)
+                              :borrowedp (ecase reference-type (:new  nil) (:borrowed t))
+                              :stolenp   (ecase argument-type  (:stolen t) (:copied nil))
+                              :check-ptr  #',c-type-check
+                              :check-lisp #'(lambda (v)
+                                              (declare (ignorable v))
+                                              #+pyffi.debug (format t "In check-lisp for ~A: ~A~%" ',lisp-name v)
+                                              ,(when lisp-type `(typep v ',lisp-type))))))
            (define-parse-method ,can-error-type (&optional (reference-type :new))
              (parse-type `(can-error (,',lisp-name ,reference-type))))
            (register-python-type ',lisp-name (find-type-parser ',lisp-name))
@@ -262,6 +263,7 @@
 ;;;; Translation Helpers for Python Types
 (define-foreign-type foreign-python-type ()
   ((borrowedp :initarg :borrowedp :reader borrowed-reference-p)
+   (stolenp   :initarg :stolenp   :reader stolen-reference-p)
    (translate-to   :initarg :to)
    (translate-from :initarg :from)
    (foreign-is-type :initarg :check-ptr)
@@ -269,15 +271,17 @@
 
 (defmethod print-object ((o foreign-python-type) s)
   (print-unreadable-object (o s :type t)
-    (format s "~A ~A ~A"
+    (format s "~A ~A ~A ~A"
             (ignore-errors (cffi::unparsed-type o))
             (if (borrowed-reference-p o) :borrowed :new)
+            (if (stolen-reference-p o) :stolen :copied)
             (cffi::actual-type o))))
 
 (defmethod translate-to-foreign (value (type foreign-python-type))
   (cond
     ((pointerp value) (values value nil)) ; assume already foreign
-    (t (values (funcall (slot-value type 'translate-to) value type) t))))
+    (t (values (funcall (slot-value type 'translate-to) value type)
+               (not (stolen-reference-p type))))))
 
 (defmethod free-translated-object (value (type foreign-python-type) decrefp)
   (declare (ignore type))
