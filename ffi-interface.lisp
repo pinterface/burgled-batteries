@@ -215,12 +215,8 @@
   (:to (value type)
     (loop :with list = (list.new* (length value))
           :for item :in value :and i :from 0
-          :do (list.set-item list i item))
-    #+(or) ;; slow (because of nth)
-    (let* ((len (length value))
-           (lst (list.new len)))
-      (dotimes (i len lst)
-        (list.set-item lst i (nth i value)))))
+          :do (list.set-item list i item)
+          :finally (return list)))
   (:from (value type)
     (loop :for i :from 0 :to (1- (list.size value))
           :collect (list.get-item value i))))
@@ -1048,7 +1044,18 @@
 (defpyfun "PyTuple_ClearFreeList" :int ()
   (:requires "Python 2.6 (or newer)"))
 
-;;; TODO List Objects
+;;; List Objects
+(defpyfun "PyList_New" list! ((len ssize-t)))
+(defpyfun "PyList_Size" ssize-t! ((list object)))
+(defpyfun "PyList_GetItem" (object! :borrowed) ((list list) (index ssize-t)))
+(defpyfun "PyList_SetItem" 0-on-success ((list list) (index ssize-t) (item (object :stolen))))
+(defpyfun "PyList_Insert"  0-on-success ((list list) (index ssize-t) (item object)))
+(defpyfun "PyList_Append"  0-on-success ((list list) (item object)))
+(defpyfun "PyList_GetSlice" list! ((list list) (low ssize-t) (high ssize-t)))
+(defpyfun "PyList_SetSlice" 0-on-success ((list list) (low ssize-t) (high ssize-t) (itemlist list)))
+(defpyfun "PyList_Sort"    0-on-success ((list list)))
+(defpyfun "PyList_Reverse" 0-on-success ((list list)))
+(defpyfun "PyList_AsTuple" tuple! ((list list)))
 
 ;;;; TODO Mapping Objects
 ;;; TODO Dictionary Objects
@@ -1091,10 +1098,6 @@
   (:implementation (import.import-module-level name globals locals fromlist -1)))
 (defpyfun "PyImport_ImportModuleLevel" (can-error :pointer) ((name :string) (globals :pointer) (locals :pointer) (fromlist :pointer) (level :int)))
 (defpyfun "PyImport_AddModule" :pointer ((name :string)))
-(defpyfun "PyList_New" list ((size :int)))
-(defpyfun "PyList_Size" :int ((lst :pointer)))
-(defpyfun "PyList_GetItem" (object :borrowed) ((lst :pointer) (index :int)))
-(defpyfun "PyList_SetItem" :int ((lst :pointer) (index :int) (o object)))
 (defpyfun "PyModule_GetDict" dict ((m :pointer)))
 
 #+(or) ;; WARNING: don't trace if lots of data.  (feedparser.parse(my-lj) produces ~195k lines)
