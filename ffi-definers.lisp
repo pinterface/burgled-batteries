@@ -27,7 +27,7 @@
 
 (defun parse-python-name (names)
   (etypecase names
-    (cl:list   (values (first names) (second names) nil))
+    (cl:list   (values (first names) (second names) (third names)))
     (cl:string (values names (translate-python-name names) t))))
 
 (defvar *type-map* (make-hash-table))
@@ -183,6 +183,14 @@
              (parse-type `(can-error (,',lisp-name ,reference-type))))
            (register-python-type ',lisp-name (find-type-parser ',lisp-name))
            ,@(when errorp `((register-error-checker ',lisp-name ,errorp))))))))
+
+(defmacro defpyfun* (lisp-name list-of-pyfun-args &body options)
+  "Takes multiple arguments to defpyfun, and expands into a defpyfun for the
+  first C function which actually exists."
+  (loop :for (c-name return-type args) :in list-of-pyfun-args
+        :when (foreign-symbol-pointer c-name)
+          :do (return `(defpyfun (,c-name ,lisp-name t) ,return-type ,args ,@options))
+        :finally (error "Unable to find suitable C definition to create function ~A~%" lisp-name)))
 
 ;;;; Translation Helpers for Functions Which Return Error Indicators
 (eval-when (:compile-toplevel :load-toplevel :execute)

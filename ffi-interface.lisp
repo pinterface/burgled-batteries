@@ -181,11 +181,11 @@
 
 ;; Shorthand types for unicode strings
 (defctype utf8-string (:string :encoding :utf-8))
-(defctype ucs4-string (:string :encoding #+little-endian :ucs-4/le #+big-endian :ucs-4/be))
 (defctype ucs2-string (:string :encoding #+little-endian :ucs-2/le #+big-endian :ucs-2/be))
+(defctype ucs4-string (:string :encoding #+little-endian :ucs-4/le #+big-endian :ucs-4/be))
 
-;; FIXME: unicode.<whatever> has to alias to unicode-ucs[24].<whatever>, because
-;;        the -ucs versions are what actually get exported.
+;; PyUnicode should be preferred to PyString because it avoids the issue of
+;; encodings.
 (defpytype "PyUnicode"
   (:type cl:string)
   (:to   (value type) (unicode.from-unicode* value (length value)))
@@ -784,7 +784,262 @@
 ;#+requires-call-by-reference-support (defpyfun "_PyBytes_Resize" :int ((string (:ref object)) (newsize ssize-t)))
 ;(defpyfun "PyBytes_Format" object! ((format object) (args tuple)))
 
-;;; TODO Unicode Objects
+;;; Unicode Objects
+(defpyfun* unicode.clear-free-list
+    (("PyUnicodeUCS2_ClearFreelist" :int ())
+     ("PyUnicodeUCS4_ClearFreelist" :int ()))
+  (:requires "Python 2.6 (or newer)"))
+;; Py_UNICODE_IS* and Py_UNICODE_TO* macros are left out to avoid trying to
+;; figure out which actual C function is in use.  If you actually want these
+;; things, you'll have to call into Python or something.
+(defpyfun* unicode.from-unicode
+    (("PyUnicodeUCS2_FromUnicode" unicode! ((u ucs2-string) (size ssize-t)))
+     ("PyUnicodeUCS4_FromUnicode" unicode! ((u ucs4-string) (size ssize-t)))))
+(defpyfun* unicode.from-string-and-size
+    (("PyUnicodeUCS2_FromStringAndSize" unicode! ((u utf8-string) (size ssize-t)))
+     ("PyUnicodeUCS4_FromStringAndSize" unicode! ((u utf8-string) (size ssize-t))))
+  (:requires "Python 2.6 (or newer)"))
+(defpyfun* unicode.from-string
+    (("PyUnicodeUCS2_FromString" unicode! ((u utf8-string)))
+     ("PyUnicodeUCS4_FromString" unicode! ((u utf8-string))))
+  (:requires "Python 2.6 (or newer)"))
+(defpyfun* unicode.from-format
+    (("PyUnicodeUCS2_FromFormat" unicode! ((format :string) &rest))
+     ("PyUnicodeUCS4_FromFormat" unicode! ((format :string) &rest)))
+  (:requires "Python 2.6 (or newer)"))
+#+requires-va_list-support
+(defpyfun* unicode.from-format-v
+    (("PyUnicodeUCS2_FromFormatV" unicode! ((format :string) (vargs va_list)))
+     ("PyUnicodeUCS4_FromFormatV" unicode! ((format :string) (vargs va_list))))
+  (:requires "Python 2.6 (or newer)"))
+(defpyfun* unicode.as-unicode ; WARNING!  Do NOT free returned buffer!
+    (("PyUnicodeUCS2_AsUnicode" (can-error ucs2-string) ((unicode object)))
+     ("PyUnicodeUCS4_AsUnicode" (can-error ucs4-string) ((unicode object)))))
+(defpyfun* unicode.get-size
+    (("PyUnicodeUCS2_GetSize" ssize-t! ((unicode object)))
+     ("PyUnicodeUCS4_GetSize" ssize-t! ((unicode object)))))
+(defpyfun* unicode.from-encoded-object
+    (("PyUnicodeUCS2_FromEncodedObject" unicode! ((obj object) (encoding :string) (errors :string)))
+     ("PyUnicodeUCS4_FromEncodedObject" unicode! ((obj object) (encoding :string) (errors :string)))))
+(defpyfun* unicode.from-object
+    (("PyUnicodeUCS2_FromObject" unicode! ((obj object)))
+     ("PyUnicodeUCS4_FromObject" unicode! ((obj object)))))
+#+requires-wchar_t-support
+(defpyfun* unicode.from-wide-char
+    (("PyUnicodeUCS2_FromWideChar" unicode! ((w wchar-string) (size ssize-t)))
+     ("PyUnicodeUCS4_FromWideChar" unicode! ((w wchar-string) (size ssize-t)))))
+#+requires-wchar_t-support
+(defpyfun* unicode.as-wide-char
+    (("PyUnicodeUCS2_AsWideChar" ssize-t! ((unicode unicode) (w wchar-string) (size ssize-t)))
+     ("PyUnicodeUCS4_AsWideChar" ssize-t! ((unicode unicode) (w wchar-string) (size ssize-t)))))
+
+;;; Unicode Codecs
+;; WARNING!  decode size parameters for the codec functions are bytes, not characters!
+(defpyfun* unicode.decode
+    (("PyUnicodeUCS2_Decode" unicode! ((s :string) (size ssize-t) (encoding :string) (errors :string)))
+     ("PyUnicodeUCS4_Decode" unicode! ((s :string) (size ssize-t) (encoding :string) (errors :string)))))
+(defpyfun* unicode.encode
+    (("PyUnicodeUCS2_Encode" string! ((s ucs2-string) (size ssize-t) (encoding :string) (errors :string)))
+     ("PyUnicodeUCS4_Encode" string! ((s ucs4-string) (size ssize-t) (encoding :string) (errors :string)))))
+(defpyfun* unicode.as-encoded-string
+    (("PyUnicodeUCS2_AsEncodedString" string! ((unicode unicode) (encoding :string) (errors :string)))
+     ("PyUnicodeUCS4_AsEncodedString" string! ((unicode unicode) (encoding :string) (errors :string)))))
+
+;; UTF-8 Codec
+(defpyfun* unicode.decode-utf8
+    (("PyUnicodeUCS2_DecodeUTF8" unicode! ((s utf8-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_DecodeUTF8" unicode! ((s utf8-string) (size ssize-t) (errors :string)))))
+#+requires-call-by-reference-support
+(defpyfun* unicode.decode-utf8-stateful
+    (("PyUnicodeUCS2_DecodeUTF8Stateful" unicode! ((s :string) (size ssize-t) (errors :string) (consumed (:ref ssize-t))))
+     ("PyUnicodeUCS4_DecodeUTF8Stateful" unicode! ((s :string) (size ssize-t) (errors :string) (consumed (:ref ssize-t))))))
+(defpyfun* unicode.encode-utf8
+    (("PyUnicodeUCS2_EncodeUTF8" string! ((s ucs2-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_EncodeUTF8" string! ((s ucs4-string) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.as-utf8-string
+    (("PyUnicodeUCS2_AsUTF8String" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsUTF8String" string! ((unicode unicode)))))
+
+;; UTF-32 Codec
+#+requires-call-by-reference-support
+(defpyfun* unicode.decode-utf32
+    (("PyUnicodeUCS2_DecodeUTF32" unicode! ((s ucs4-string) (size ssize-t) (errors :string) (byteorder (:ref :int))))
+     ("PyUnicodeUCS4_DecodeUTF32" unicode! ((s ucs4-string) (size ssize-t) (errors :string) (byteorder (:ref :int)))))
+  (:requires "Python 2.6 (or newer)"))
+#+requires-call-by-reference-support
+(defpyfun* unicode.decode-utf32-stateful
+    (("PyUnicodeUCS2_DecodeUTF32Stateful" unicode! ((s ucs4-string) (size ssize-t) (errors :string) (byteorder (:ref :int)) (consumed (:ref ssize-t))))
+     ("PyUnicodeUCS4_DecodeUTF32Stateful" unicode! ((s ucs4-string) (size ssize-t) (errors :string) (byteorder (:ref :int)) (consumed (:ref ssize-t)))))
+  (:requires "Python 2.6 (or newer)"))
+(defpyfun* unicode.encode-utf32 ; FIXME: actually returns bytes! (but...that's just an alias for string! anyway)
+    (("PyUnicodeUCS2_EncodeUTF32" string! ((s ucs2-string) (size ssize-t) (errors :string) (byteorder :int)))
+     ("PyUnicodeUCS4_EncodeUTF32" string! ((s ucs4-string) (size ssize-t) (errors :string) (byteorder :int))))
+  (:requires "Python 2.6 (or newer)"))
+(defpyfun* unicode.as-utf32-string ; FIXME: actually returns bytes! (but...that's just an alias for string! anyway)
+    (("PyUnicodeUCS2_AsUTF32String" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsUTF32String" string! ((unicode unicode))))
+  (:requires "Python 2.6 (or newer)"))
+
+;; UTF-16 Codec
+#+requires-call-by-reference-support
+(defpyfun* unicode.decode-utf16
+    (("PyUnicodeUCS2_DecodeUTF16" unicode! ((s ucs2-string) (size ssize-t) (errors :string) (byteorder (:ref :int))))
+     ("PyUnicodeUCS4_DecodeUTF16" unicode! ((s ucs2-string) (size ssize-t) (errors :string) (byteorder (:ref :int))))))
+#+requires-call-by-reference-support
+(defpyfun* unicode.decode-utf16-stateful
+    (("PyUnicodeUCS2_DecodeUTF16Stateful" unicode! ((s ucs2-string) (size ssize-t) (errors :string) (byteorder (:ref :int)) (consumed (:ref ssize-t))))
+     ("PyUnicodeUCS4_DecodeUTF16Stateful" unicode! ((s ucs2-string) (size ssize-t) (errors :string) (byteorder (:ref :int)) (consumed (:ref ssize-t))))))
+(defpyfun* unicode.encode-utf16
+    (("PyUnicodeUCS2_EncodeUTF16" string! ((s ucs2-string) (size ssize-t) (errors :string) (byteorder :int)))
+     ("PyUnicodeUCS4_EncodeUTF16" string! ((s ucs4-string) (size ssize-t) (errors :string) (byteorder :int)))))
+(defpyfun* unicode.as-utf16-string
+    (("PyUnicodeUCS2_AsUTF16String" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsUTF16String" string! ((unicode unicode)))))
+
+;; UTF-7 Codec
+;; NOTE: While passing in pointers to strings should work in theory (say, a
+;;       pointer you got from #'unicode.encode-utf7*), we don't actually support
+;;       translation of lisp strings to and from utf-7, because babel doesn't
+;;       provide it.
+(defctype utf7-string (:string :encoding :utf-7))
+(defpyfun "PyUnicode_DecodeUTF7" unicode! ((s utf7-string) (size ssize-t) (errors :string)))
+#+requires-call-by-reference-support
+(defpyfun "PyUnicode_DecodeUTF7Stateful" unicode! ((s utf7-string) (size ssize-t) (errors :string) (consumed (:ref ssize-t))))
+;; FIXME: The S argument should actually be a ucs2-string or ucs4-string
+;;        depending on which one Python has been compiled to use.  It's a
+;;        :pointer for now because we aren't checking here and so might get it
+;;        wrong it we assumed.
+(defpyfun "PyUnicode_EncodeUTF7" string! ((s :pointer) (size ssize-t) (base64SetO :int) (base64WhiteSpace :int) (errors :string)))
+
+;; Unicode-Escape Codec
+;; NOTE: The Unicode-Escape codec is Python specific, and because of that we
+;;       only support it through use of pointers gotten from Python, rather than
+;;       converted lisp strings.  If it really bothers you, I suppose I could
+;;       accept patches to do lisp-side conversion.
+(defpyfun* unicode.decode-unicode-escape
+    (("PyUnicodeUCS2_DecodeUnicodeEscape" unicode! ((s :pointer) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_DecodeUnicodeEscape" unicode! ((s :pointer) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.encode-unicode-escape
+    (("PyUnicodeUCS2_EncodeUnicodeEscape" string! ((s ucs2-string) (size ssize-t)))
+     ("PyUnicodeUCS4_EncodeUnicodeEscape" string! ((s ucs4-string) (size ssize-t)))))
+(defpyfun* unicode.as-unicode-escape-string
+    (("PyUnicodeUCS2_AsUnicodeEscapeString" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsUnicodeEscapeString" string! ((unicode unicode)))))
+
+;; Raw-Unicode-Escape Codec
+;; NOTE: The Raw-Unicode-Escape codec is Python specific, and because of that we
+;;       only support it through use of pointers gotten from Python, rather than
+;;       converted lisp strings.  If it really bothers you, I suppose I could
+;;       accept patches to do lisp-side conversion.
+(defpyfun* unicode.decode-raw-unicode-escape
+    (("PyUnicodeUCS2_DecodeRawUnicodeEscape" unicode! ((s :pointer) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_DecodeRawUnicodeEscape" unicode! ((s :pointer) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.encode-raw-unicode-escape
+    (("PyUnicodeUCS2_EncodeRawUnicodeEscape" string! ((s ucs2-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_EncodeRawUnicodeEscape" string! ((s ucs4-string) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.as-raw-unicode-escape-string
+    (("PyUnicodeUCS2_AsRawUnicodeEscapeString" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsRawUnicodeEscapeString" string! ((unicode unicode)))))
+
+;; Latin-1 Codec
+(defctype latin1-string (:string :encoding :latin-1))
+(defpyfun* unicode.decode-latin1
+    (("PyUnicodeUCS2_DecodeLatin1" unicode! ((s latin1-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_DecodeLatin1" unicode! ((s latin1-string) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.encode-latin1
+    (("PyUnicodeUCS2_EncodeLatin1" string! ((s ucs2-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_EncodeLatin1" string! ((s ucs4-string) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.as-latin1-string
+    (("PyUnicodeUCS2_AsLatin1String" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsLatin1String" string! ((unicode unicode)))))
+
+;; ASCII Codec
+(defctype ascii-string (:string :encoding :ascii))
+(defpyfun* unicode.decode-ascii
+    (("PyUnicodeUCS2_DecodeASCII" unicode! ((s ascii-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_DecodeASCII" unicode! ((s ascii-string) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.encode-ascii
+    (("PyUnicodeUCS2_EncodeASCII" string! ((s ucs2-string) (size ssize-t) (errors :string)))
+     ("PyUnicodeUCS4_EncodeASCII" string! ((s ucs4-string) (size ssize-t) (errors :string)))))
+(defpyfun* unicode.as-ascii-string
+    (("PyUnicodeUCS2_AsASCIIString" string! ((unicode unicode)))
+     ("PyUnicodeUCS4_AsASCIIString" string! ((unicode unicode)))))
+
+;; Character Map Codec
+;; NOTE: mapping and table arguments are probably dicts, but could be other
+;;       things as well (hence why they're left as general objects, rather than
+;;       being specified).
+(defpyfun* unicode.decode-charmap
+    (("PyUnicodeUCS2_DecodeCharmap" unicode! ((s :string) (size ssize-t) (mapping object) (errors :string)))
+     ("PyUnicodeUCS4_DecodeCharmap" unicode! ((s :string) (size ssize-t) (mapping object) (errors :string)))))
+(defpyfun* unicode.encode-charmap
+    (("PyUnicodeUCS2_EncodeCharmap" string! ((s ucs2-string) (size ssize-t) (mapping object) (errors :string)))
+     ("PyUnicodeUCS4_EncodeCharmap" string! ((s ucs4-string) (size ssize-t) (mapping object) (errors :string)))))
+(defpyfun* unicode.as-charmap-string
+    (("PyUnicodeUCS2_AsCharmapString" string! ((unicode unicode) (mapping object)))
+     ("PyUnicodeUCS4_AsCharmapString" string! ((unicode unicode) (mapping object)))))
+(defpyfun* unicode.translate-charmap
+    (("PyUnicodeUCS2_TranslateCharmap" unicode! ((s ucs2-string) (size ssize-t) (table object) (errors :string)))
+     ("PyUnicodeUCS4_TranslateCharmap" unicode! ((s ucs4-string) (size ssize-t) (table object) (errors :string)))))
+
+;; MBCS codecs (for Windows)
+;; NOTE: The MBCS codecs are Windows- and machine-setting-specific, so we only
+;;       support them through use of Python-supplied pointers.
+(defpyfun "PyUnicode_DecodeMBCS" unicode! ((s :pointer) (size ssize-t) (errors :string))
+  (:requires "Windows"))
+#+requires-call-by-reference-support
+(defpyfun ("PyUnicode_DecodeMBCSStateful" unicode.decode-mbcs-stateful) unicode! ((s :pointer) (size :int) (errors :string) (consumed (:ref :int)))
+  (:requires "Windows"))
+;; FIXME: The S argument should actually be a ucs2-string or ucs4-string
+;;        depending on which one Python has been compiled to use.  It's a
+;;        :pointer for now because we aren't checking here and so might get it
+;;        wrong it we assumed.
+(defpyfun "PyUnicode_EncodeMBCS" string! ((s :pointer) (size ssize-t) (errors :string))
+  (:requires "Windows"))
+(defpyfun ("PyUnicode_AsMBCSString" unicode.as-mbcs-string) string! ((unicode unicode))
+  (:requires "Windows"))
+
+;; Methods and Slots
+(defpyfun* unicode.concat
+    (("PyUnicodeUCS2_Concat" unicode! ((left object) (right object)))
+     ("PyUnicodeUCS4_Concat" unicode! ((left object) (right object)))))
+(defpyfun* unicode.split
+    (("PyUnicodeUCS2_Split" list! ((s object) (sep object) (maxsplit ssize-t)))
+     ("PyUnicodeUCS4_Split" list! ((s object) (sep object) (maxsplit ssize-t)))))
+(defpyfun* unicode.splitlines
+    (("PyUnicodeUCS2_Splitlines" list! ((s object) (keepend :int)))
+     ("PyUnicodeUCS4_Splitlines" list! ((s object) (keepend :int)))))
+(defpyfun* unicode.translate
+    (("PyUnicodeUCS2_Translate" unicode! ((str object) (table object) (errors :string)))
+     ("PyUnicodeUCS4_Translate" unicode! ((str object) (table object) (errors :string)))))
+(defpyfun* unicode.join
+    (("PyUnicodeUCS2_Join" unicode! ((separator object) (seq object)))
+     ("PyUnicodeUCS4_Join" unicode! ((separator object) (seq object)))))
+(defpyfun* unicode.tailmatch
+    (("PyUnicodeUCS2_Tailmatch" boolean! ((str object) (substr object) (start ssize-t) (end ssize-t) (direction :int)))
+     ("PyUnicodeUCS4_Tailmatch" boolean! ((str object) (substr object) (start ssize-t) (end ssize-t) (direction :int)))))
+(defpyfun* unicode.find
+    (("PyUnicodeUCS2_Find" ssize-t! ((str object) (substr object) (start ssize-t) (end ssize-t) (direction :int)))
+     ("PyUnicodeUCS4_Find" ssize-t! ((str object) (substr object) (start ssize-t) (end ssize-t) (direction :int)))))
+(defpyfun* unicode.count
+    (("PyUnicodeUCS2_Count" ssize-t! ((str object) (substr object) (start ssize-t) (end ssize-t)))
+     ("PyUnicodeUCS4_Count" ssize-t! ((str object) (substr object) (start ssize-t) (end ssize-t)))))
+(defpyfun* unicode.replace
+    (("PyUnicodeUCS2_Replace" unicode! ((str object) (substr object) (replstr object) (maxcount ssize-t)))
+     ("PyUnicodeUCS4_Replace" unicode! ((str object) (substr object) (replstr object) (maxcount ssize-t)))))
+(defpyfun* unicode.compare
+    (("PyUnicodeUCS2_Compare" :int ((left object) (right object)))
+     ("PyUnicodeUCS4_Compare" :int ((left object) (right object)))))
+(defpyfun* unicode.rich-compare
+    (("PyUnicodeUCS2_RichCompare" object! ((left object) (right object) (op :int)))
+     ("PyUnicodeUCS4_RichCompare" object! ((left object) (right object) (op :int)))))
+(defpyfun* unicode.format
+    (("PyUnicodeUCS2_Format" unicode! ((format object) (args object)))
+     ("PyUnicodeUCS4_Format" unicode! ((format object) (args object)))))
+(defpyfun* unicode.contains
+    (("PyUnicodeUCS2_Contains" boolean! ((container object) (element object)))
+     ("PyUnicodeUCS4_Contains" boolean! ((container object) (element object)))))
+
 ;;; TODO Buffers and Memoryview Objects
 ;;; TODO Tuple Objects
 ;;; TODO List Objects
@@ -839,28 +1094,6 @@
 (defpyfun "PyTuple_Size" :int ((lst :pointer)))
 (defpyfun "PyTuple_GetItem" (object :borrowed) ((lst :pointer) (index :int)))
 (defpyfun "PyTuple_SetItem" :int ((lst :pointer) (index :int) (o object)))
-; may not exist (opposite ucs2)
-(defpyfun "PyUnicodeUCS4_AsUnicode" ucs4-string ((s :pointer)) (:requires "UCS4"))
-(defpyfun "PyUnicodeUCS4_FromUnicode" unicode ((s ucs4-string) (size :int)) (:requires "UCS4"))
-(defpyfun "PyUnicodeUCS4_GetSize" :int ((u :pointer)) (:requires "UCS4"))
-; may not exist (opposite ucs4)
-(defpyfun "PyUnicodeUCS2_AsUnicode" ucs2-string ((s :pointer)) (:requires "UCS2"))
-(defpyfun "PyUnicodeUCS2_FromUnicode" unicode ((s ucs2-string) (size :int)) (:requires "UCS2"))
-(defpyfun "PyUnicodeUCS2_GetSize" :int ((u :pointer)) (:requires "UCS2"))
-(defun unicode.as-unicode (s)
-  (cond
-    ((foreign-symbol-pointer "PyUnicodeUCS4_AsUnicode")
-     (unicode-ucs4.as-unicode s))
-    ((foreign-symbol-pointer "PyUnicodeUCS2_AsUnicode")
-     (unicode-ucs2.as-unicode s))
-    (t (error "No unicode functions!"))))
-(defun unicode.from-unicode* (s size)
-  (cond
-    ((foreign-symbol-pointer "PyUnicodeUCS4_FromUnicode")
-     (unicode-ucs4.from-unicode* s size))
-    ((foreign-symbol-pointer "PyUnicodeUCS2_FromUnicode")
-     (unicode-ucs2.from-unicode* s size))
-    (t (error "No unicode functions!"))))
 
 #+(or) ;; WARNING: don't trace if lots of data.  (feedparser.parse(my-lj) produces ~195k lines)
 (trace translate-to-foreign translate-from-foreign free-translated-object
