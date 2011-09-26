@@ -238,7 +238,25 @@
                (setf (gethash key dict) value)))
         (.dec-ref items)))))
 
-;;; TODO: Other Objects (Class, Instance, Function, Method, File)
+;;;; Other Objects
+;;; Class and Instance Objects
+;; Skipped because according to the docs they are going away in Python 3
+
+;;; Function Objects
+;; NOTE: Conceivably, we could turn Python functions into lambdas which when
+;;       called ran the Python function, and use an #'eq hash to go the other
+;;       way.  However, I don't see an obvious way to introspect PyFunctions to
+;;       grab the argument list, so it'd be a pretty poor implementation.  Also,
+;;       going from a Lisp-function to a Python-function is unlikely to be
+;;       supported any time soon. Rather than suffer that, we punt and just do
+;;       pointers for now.
+(defpytype "PyFunction")
+
+;;; Method Objects
+;; see note for Function Objects
+(defpytype "PyMethod")
+
+;;; TODO File Objects
 
 ;;; Module Objects
 ;; NOTE: Because Python Modules don't really have any meaning in Lisp land, we
@@ -543,8 +561,8 @@
 (defpyfun "PyObject_IsInstance" boolean! ((inst    object) (cls object)))
 (defpyfun "PyObject_IsSubclass" boolean! ((derived object) (cls object)))
 (defpyfun "PyCallable_Check" :boolean ((o object)))
-(defpyfun "PyObject_Call"         object! ((callable-object object) (args object) (kw object)))
-(defpyfun "PyObject_CallObject"   object! ((callable-object object) (args object)))
+(defpyfun "PyObject_Call"         object! ((callable-object object) (args tuple) (kw dict)))
+(defpyfun "PyObject_CallObject"   object! ((callable-object object) (args tuple)))
 ;; FIXME: how do we get conversion for &rest arguments?
 (defpyfun "PyObject_CallFunction" object! ((callable object) (format :string) &rest))
 (defpyfun "PyObject_CallMethod"   object! ((o object) (method :string) (format :string) &rest))
@@ -1109,10 +1127,28 @@
 (defpyfun "PyDict_Update" 0-on-success ((a dict) (b object)))
 (defpyfun "PyDict_MergeFromSeq2" 0-on-success ((a dict) (seq2 object) (override :boolean)))
 
-;;;; TODO Other Objects
-;;; TODO Class and Instance Objects
-;;; TODO Function Objects
-;;; TODO Method Objects
+;;;; Other Objects
+;;; Class and Instance Objects
+;; Skipped because according to the docs they are going away in Python 3
+
+;;; Function Objects
+(defpyfun "PyFunction_New" function! ((code code) (globals dict)))
+(defpyfun "PyFunction_GetCode" (code! :borrowed) ((op function)))
+(defpyfun "PyFunction_GetGlobals" (dict! :borrowed) ((op function)))
+(defpyfun "PyFunction_GetModule" (object! :borrowed) ((op function)))
+(defpyfun "PyFunction_GetDefaults" tuple? ((op function)))
+(defpyfun "PyFunction_SetDefaults" 0-on-success ((op function) (defaults object))) ; FIXME: defaults must be either Py_None or a tuple
+(defpyfun "PyFunction_GetClosure" tuple? ((op function)))
+(defpyfun "PyFunction_SetClosure" 0-on-success ((op function) (closure object))) ; FIXME: closure must be either Py_None or a tuple
+
+;;; Method Objects
+(defpyfun "PyMethod_New" method! ((func object) (self object) (class object)))
+(defpyfun "PyMethod_Class"    (object! :borrowed) ((meth method)))
+(defpyfun "PyMethod_Function" (object! :borrowed) ((meth method)))
+(defpyfun "PyMethod_Self"     (object! :borrowed) ((meth method)))
+(defpyfun "PyMethod_ClearFreeList" :int ()
+  (:requires "Python 2.6 (or newer)"))
+
 ;;; TODO File Objects
 
 ;;; Module Objects
