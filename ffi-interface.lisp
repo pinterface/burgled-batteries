@@ -113,9 +113,7 @@
   ;; iterators
   (iter :pointer) (iternext :pointer))
 
-(defpytype "PyType"
-  (:to   (value type) value)
-  (:from (value type) value))
+(defpytype "PyType")
 
 ;; Docs say use Py_None, but _Py_NoneStruct is what's exported
 (defpyvar "_Py_NoneStruct" +None+)
@@ -248,18 +246,14 @@
 ;;; Module Objects
 ;; NOTE: Because Python Modules don't really have any meaning in Lisp land, we
 ;;       just pass them around as pointers and call it good.
-(defpytype "PyModule"
-  (:to   (value type) value)
-  (:from (value type) value))
+(defpytype "PyModule")
 
 ;;; TODO: Other Objects (Iterator, Descriptor, ...)
 
 ;;; Code Objects
 ;; NOTE: Because Python Code Objects don't really have any meaning in Lisp land,
 ;;       we just pass them around as pointers and call it good.
-(defpytype "PyCode"
-  (:to   (value type) value)
-  (:from (value type) value))
+(defpytype "PyCode")
 
 ;;;; API Functions Relating to Threads, Interpreter State, and Debugging
 

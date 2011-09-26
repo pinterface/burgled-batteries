@@ -147,8 +147,8 @@
          (lisp-type (car (assoc-value options :type)))
          (c-type-check       (translate-python-name (format nil "~A_Check" c-name)))
          (c-type-check-exact (translate-python-name (format nil "~A_CheckExact" c-name)))
-         (to   (assoc-value options :to))
-         (from (assoc-value options :from))
+         (to   (or (assoc-value options :to)   '((value type) value)))
+         (from (or (assoc-value options :from) '((value type) value)))
          (errorp (car (assoc-value options :errorp))))
     (destructuring-bind ((to-val to-type) &rest to-body) to
       (destructuring-bind ((from-val from-type) &rest from-body) from
