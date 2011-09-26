@@ -243,8 +243,23 @@
                (setf (gethash key dict) value)))
         (.dec-ref items)))))
 
-;;; TODO: Other Objects (Class, Instance, Function, Method, File, Module, Iterator, Descriptor, ...)
+;;; TODO: Other Objects (Class, Instance, Function, Method, File)
 
+;;; Module Objects
+;; NOTE: Because Python Modules don't really have any meaning in Lisp land, we
+;;       just pass them around as pointers and call it good.
+(defpytype "PyModule"
+  (:to   (value type) value)
+  (:from (value type) value))
+
+;;; TODO: Other Objects (Iterator, Descriptor, ...)
+
+;;; Code Objects
+;; NOTE: Because Python Code Objects don't really have any meaning in Lisp land,
+;;       we just pass them around as pointers and call it good.
+(defpytype "PyCode"
+  (:to   (value type) value)
+  (:from (value type) value))
 
 ;;;; API Functions Relating to Threads, Interpreter State, and Debugging
 
@@ -479,7 +494,31 @@
 (defpyvar "PyExc_ZeroDivisionError")
 
 ;;;; TODO: Operating System Utilities, System Functions, Process Control
-;;;; TODO: Check Importing Modules; ensure all functions accounted for
+
+;;;; Importing Modules
+;; Technically, some of these may also return a top-level package instead of a
+;; module.  But it's all just pointers anyway.
+(defctype initfunc :pointer) ; callback
+(defcstruct .inittab (name :string) (initfunc initfunc))
+(defpyfun "PyImport_ImportModule"        module! ((name :string)))
+(defpyfun "PyImport_ImportModuleNoBlock" module! ((name :string))
+  (:requires "Python 2.6 (or newer)"))
+(defpyfun "PyImport_ImportModuleEx"      module! ((name :string) (globals dict) (locals dict) (fromlist list))
+  (:implementation (import.import-module-level* name globals locals fromlist -1)))
+(defpyfun "PyImport_ImportModuleLevel"   module! ((name :string) (globals dict) (locals dict) (fromlist list) (level :int))
+  (:requires "Python 2.5 (or newer)"))
+(defpyfun "PyImport_Import" module! ((name object)))
+(defpyfun "PyImport_ReloadModule" module! ((m module)))
+(defpyfun "PyImport_AddModule" (module! :borrowed) ((name :string)))
+(defpyfun "PyImport_ExecCodeModule"   module! ((name :string) (co code)))
+(defpyfun "PyImport_ExecCodeModuleEx" module! ((name :string) (co code) (pathname :string)))
+(defpyfun "PyImport_GetMagicNumber" :long ())
+(defpyfun "PyImport_GetModuleDict" (dict! :borrowed) ())
+(defpyfun "PyImport_GetImporter" object! ((path object))) ; Returns an "importer object".  Whatever that is.
+(defpyfun "PyImport_ImportFrozenModule" boolean! ((name :string)))
+(defpyfun "PyImport_AppendInittab" 0-on-success ((name :string) (callback initfunc)))
+(defpyfun "PyImport_ExtendInittab" 0-on-success ((newtab .inittab)))
+
 ;;;; TODO: Data Marshalling Support
 ;;;; TODO: Passing Arguments and Building Values
 ;;;; TODO: String Conversion and Formatting
@@ -1085,7 +1124,16 @@
 ;;; TODO Function Objects
 ;;; TODO Method Objects
 ;;; TODO File Objects
-;;; TODO Module Objects
+
+;;; Module Objects
+(defpyfun "PyModule_New" module! ((name :string)))
+(defpyfun "PyModule_GetDict"     (dict :borrowed)    ((module module)))
+(defpyfun "PyModule_GetName"     (can-error :string) ((module module)))
+(defpyfun "PyModule_GetFilename" (can-error :string) ((module module)))
+(defpyfun "PyModule_AddObject"         0-on-success ((module module) (name :string) (value (object :stolen))))
+(defpyfun "PyModule_AddIntConstant"    0-on-success ((module module) (name :string) (value :long)))
+(defpyfun "PyModule_AddStringConstant" 0-on-success ((module module) (name :string) (value :string)))
+
 ;;; TODO Iterator Objects
 ;;; TODO Descriptor Objects
 ;;; TODO Slice Objects
@@ -1096,22 +1144,15 @@
 ;;; TODO Generator Objects
 ;;; TODO DateTime Objects
 ;;; TODO Set Objects
-;;; TODO Code Objects
+
+;;; Code Objects
+;(defpyfun "PyCode_GetNumFree" :int ((co code)))
+(defpyfun "PyCode_New" code! ((argcount :int) (nlocals :int) (stacksize :int) (flags :int) (code object) (consts object) (names object) (varnames object) (freevars object) (cellvars object) (filename object) (name object) (firstlineno :int) (lnotab object)))
+;(defpyfun "PyCode_NewEmpty" :int ((filename :string) (funcname :string) (firstlineno :int)))
 
 ;;;; TODO: Memory Management
 ;;;; TODO: Object Implementation Support (Allocating, Structures, Types, GC)
 
-;; FIXME: reorder to better match order of Python's docs
-;; FIXME: some of these :POINTERs should probably be OBJECTs (or DICTs, etc.)
-;; FIXME: we also need a way to say "returns NULL on error" or "-1 on error"
-(defpyfun "PyImport_GetModuleDict" dict ())
-(defpyfun "PyImport_Import" object! ((name string)))
-(defpyfun "PyImport_ImportModule" (can-error :pointer) ((name :string)))
-(defpyfun "PyImport_ImportModuleEx" (can-error :pointer) ((name :string) (globals :pointer) (locals :pointer) (fromlist :pointer))
-  (:implementation (import.import-module-level name globals locals fromlist -1)))
-(defpyfun "PyImport_ImportModuleLevel" (can-error :pointer) ((name :string) (globals :pointer) (locals :pointer) (fromlist :pointer) (level :int)))
-(defpyfun "PyImport_AddModule" :pointer ((name :string)))
-(defpyfun "PyModule_GetDict" dict ((m :pointer)))
 
 #+(or) ;; WARNING: don't trace if lots of data.  (feedparser.parse(my-lj) produces ~195k lines)
 (trace translate-to-foreign translate-from-foreign free-translated-object

@@ -259,6 +259,7 @@
 (defctype boolean! (can-error :boolean :success (0 1)))
 (defctype ssize-t! (can-error ssize-t))
 (register-error-checker :pointer #'null-pointer-p)
+(register-error-checker :string  #'null-pointer-p)
 
 ;;;; Translation Helpers for Python Types
 (define-foreign-type foreign-python-type ()
