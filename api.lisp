@@ -2,7 +2,6 @@
 
 (defvar *py-main-module*)
 (defvar *py-main-module-dict*)
-(defvar *pyphuns* (make-hash-table))
 
 (defun startup-python ()
   (.initialize)
@@ -14,7 +13,6 @@
 
 (defun shutdown-python ()
   (setf *py-main-module* nil *py-main-module-dict* nil)
-  (clrhash *pyphuns*)
   (.finalize))
 
 (defun import (name)
@@ -25,30 +23,51 @@
 	(.dec-ref m)))))
 
 (defun eval (expression)
+  "Evaluates a Python expression and returns a Lisp object (or a pointer, if no
+method of translation is known)."
   (run.string expression +eval-input+ *py-main-module-dict* *py-main-module-dict*))
+(defun eval* (expression)
+  "Like EVAL, but always returns a pointer to a Python object."
+  (run.string* expression +eval-input+ *py-main-module-dict* *py-main-module-dict*))
 
 (defun apply (func &rest args)
   (object.call-object func (cl:apply #'vector args)))
 
-;; FIXME: this produces errors now
-;should add keyword arguments
-(defmacro defpyfun (expression args)
- (let ((func (gensym))
-       (name (if (listp expression)
-		 (second expression)
-		 (intern (string-upcase expression))))
-       (form (if (listp expression) (first expression) expression)))
-   `(defun ,name ,args
-      (let ((,func (gethash ',name *pyphuns*)))
-	(if (null ,func)
-	    (progn
-	      (setf ,func (eval ,form))
-	      (if (not (callable.check ,func))
-		  (progn
-		    (.dec-ref ,func)
-		    (python.cffi::raise-python-exception)))
-	      (setf (gethash ',name *pyphuns*) ,func)))
-	(apply ,func ,@args)))))
+(defmacro with-decrements (pointer-vars &body body)
+  `(unwind-protect
+        (progn ,@body)
+     (progn
+       ,@(mapcar (lambda (x) `(.dec-ref ,x)) pointer-vars))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun %get-function (python-name)
+    (let* ((pyfunc (eval* python-name)))
+      (cond
+        ((callable.check pyfunc) pyfunc)
+        (t (.dec-ref pyfunc)
+           (error "The Python function ~S does not appear to exist." python-name))))))
+
+;; FIXME: support for optional and keyword arguments undoubtedly needs to be improved
+(defmacro defpyfun (names args)
+  "Defines a Lisp function which calls a Python function.  If the Python
+function has a docstring, that docstring will be used as the Lisp function's
+docstring as well.
+
+Note that the Python interpreter must have been started and done any necessary
+imports for this macro to expand successfully."
+  (let* ((names (ensure-list names))
+         (python-name (first names))
+         (lisp-name (or (second names) (intern (string-upcase python-name))))
+         (pyfunc (%get-function python-name)))
+    (with-decrements (pyfunc)
+      (multiple-value-bind (required optional rest keywords) (parse-ordinary-lambda-list args)
+        (let* ((docstring (object.get-attr-string pyfunc "__doc__")))
+          (with-unique-names (pyfunc)
+            `(defun ,lisp-name ,args
+               ,@(when (stringp docstring) `(,docstring))
+               (let ((,pyfunc (%get-function ,python-name)))
+                 (with-decrements (,pyfunc)
+                   (object.call-object ,pyfunc (vector ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords))))))))))))
 
 ;; FIXME: nonsensical for translated values
 (defmacro defpyslot (name &optional lisp-name)

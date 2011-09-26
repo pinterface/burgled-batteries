@@ -18,7 +18,7 @@
                    (push (symbol-name v) sym))))))
 
 (defpackage #:pyffi
-  (:use #:cl #:python.cffi)
+  (:use #:cl #:python.cffi #:alexandria)
   (:shadow #:import
            #:eval
            #:apply)
@@ -26,6 +26,7 @@
            #:shutdown-python
            #:import
            #:eval
+           #:eval*
            #:apply
            #:defpyfun
            #:defpyslot
