@@ -78,9 +78,6 @@
             :when (funcall (slot-value foreign-type 'foreign-is-type) value)
               :do (return (translate-from-foreign value foreign-type))
             :finally (return value)))))
-(define-parse-method object? (&rest options)
-  (parse-type `(soft-error (object ,@options))))
-;(defctype object? (soft-error object))
 
 ;; PyType objects have a structure with something we want.  Unfortunately for
 ;; us, the part we want is a ways into it.
