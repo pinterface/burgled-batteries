@@ -238,9 +238,8 @@
       (unwind-protect
            (dotimes (i (list.size items) dict)
              (let* ((item (list.get-item* items i))
-                    (key (tuple.get-item item 0))
+                    (key   (tuple.get-item item 0))
                     (value (tuple.get-item item 1)))
-               (when (string= key "bozo_exception") (format t "BOZO!  ~A~%" (object.str value)))
                (setf (gethash key dict) value)))
         (.dec-ref items)))))
 
@@ -1059,8 +1058,27 @@
 (defpyfun "PyList_Reverse" 0-on-success ((list list)))
 (defpyfun "PyList_AsTuple" tuple! ((list list)))
 
-;;;; TODO Mapping Objects
-;;; TODO Dictionary Objects
+;;;; Mapping Objects
+;;; Dictionary Objects
+(defpyfun "PyDict_New" dict! ())
+(defpyfun "PyDictProxy_New" object! ((dict dict)))
+(defpyfun "PyDict_Clear" :void ((p dict)))
+(defpyfun "PyDict_Contains" boolean! ((p dict) (key object)))
+(defpyfun "PyDict_Copy" dict! ((p dict)))
+(defpyfun "PyDict_SetItem"       0-on-success ((p dict) (key object ) (val object)))
+(defpyfun "PyDict_SetItemString" 0-on-success ((p dict) (key :string) (val object)))
+(defpyfun "PyDict_DelItem"       0-on-success ((p dict) (key object)))
+(defpyfun "PyDict_DelItemString" 0-on-success ((p dict) (key :string)))
+(defpyfun "PyDict_GetItem"       (object? :borrowed) ((p dict) (key object)))
+(defpyfun "PyDict_GetItemString" (object? :borrowed) ((p dict) (key :string)))
+(defpyfun "PyDict_Items"   list! ((p dict)))
+(defpyfun "PyDict_Keys"    list! ((p dict)))
+(defpyfun "PyDict_Values"  list! ((p dict)))
+(defpyfun "PyDict_Size" ssize-t! ((p dict)))
+#+requires-call-by-reference-support (defpyfun "PyDict_Next" :int ((p dict) (ppos (:ref ssize-t)) (pkey (:ref object)) (pvalue (:ref object))))
+(defpyfun "PyDict_Merge"  0-on-success ((a dict) (b object) (override :boolean)))
+(defpyfun "PyDict_Update" 0-on-success ((a dict) (b object)))
+(defpyfun "PyDict_MergeFromSeq2" 0-on-success ((a dict) (seq2 object) (override :boolean)))
 
 ;;;; TODO Other Objects
 ;;; TODO Class and Instance Objects
@@ -1086,13 +1104,6 @@
 ;; FIXME: reorder to better match order of Python's docs
 ;; FIXME: some of these :POINTERs should probably be OBJECTs (or DICTs, etc.)
 ;; FIXME: we also need a way to say "returns NULL on error" or "-1 on error"
-(defpyfun "PyDict_New" dict ())
-(defpyfun "PyDict_Keys" list ((d :pointer)))
-(defpyfun "PyDict_Size" ssize-t ((d :pointer)))
-(defpyfun "PyDict_GetItem" (object :borrowed) ((d :pointer) (key object)))
-(defpyfun "PyDict_GetItemString" (object :borrowed) ((d :pointer) (key string)))
-(defpyfun "PyDict_Items" list ((d :pointer)))
-(defpyfun "PyDict_SetItem" :int ((d :pointer) (key object) (val object))) ; canerr
 (defpyfun "PyImport_GetModuleDict" dict ())
 (defpyfun "PyImport_Import" object! ((name string)))
 (defpyfun "PyImport_ImportModule" (can-error :pointer) ((name :string)))
