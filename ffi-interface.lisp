@@ -257,13 +257,28 @@
 (defpytype "PyMethod")
 
 ;;; TODO File Objects
+;; NOTE: Full support (meaning gray-streams) for Python file objects may not be
+;;       possible.
 
 ;;; Module Objects
 ;; NOTE: Because Python Modules don't really have any meaning in Lisp land, we
 ;;       just pass them around as pointers and call it good.
 (defpytype "PyModule")
 
-;;; TODO: Other Objects (Iterator, Descriptor, ...)
+;;; TODO Iterator Objects
+;;; TODO Descriptor Objects
+;;; TODO Slice Objects
+;;; TODO Weak Reference Objects
+;;; TODO Capsules
+
+;;; CObjects (skipped; deprecated)
+
+;;; TODO Cell Objects
+;;; TODO Generator Objects
+
+;;; DateTime Objects (skipped; requires extra C header)
+
+;;; TODO Set Objects
 
 ;;; Code Objects
 ;; NOTE: Because Python Code Objects don't really have any meaning in Lisp land,
@@ -1165,10 +1180,14 @@
 ;;; TODO Slice Objects
 ;;; TODO Weak Reference Objects
 ;;; TODO Capsules
-;;; TODO CObjects
+
+;;; CObjects (skipped; deprecated)
+
 ;;; TODO Cell Objects
 ;;; TODO Generator Objects
-;;; TODO DateTime Objects
+
+;;; DateTime Objects (skipped; requires extra C header)
+
 ;;; TODO Set Objects
 
 ;;; Code Objects
