@@ -2,6 +2,14 @@
 
 ;;;; FFI -> Lisp Name Translation
 (defun translate-python-name (c-name)
+  "Translates a Python name such as PyName into a lisp name, by removing the Py
+prefix, and converting CamelCase to hyphen-separated.  The first underscore is
+converted into a period, and remaining underscores to dashes.  That is,
+\"PyInt_New\" gets converted into 'INT.NEW, and \"Py_SomeFunction\" gets turned
+into '.SOME-FUNCTION.
+
+Produces an error if the name that would be produced conflicts with a CL symbol
+and needs to be shadowed."
   (let* ((start (cond
                   ((string= "_Py" c-name :end2 3) 3)
                   ((string= "Py"  c-name :end2 2) 2)
@@ -26,6 +34,9 @@
         sym)))
 
 (defun parse-python-name (names)
+  "Returns (values python-name lisp-name exportp).  Given a string, assumes the
+name should always be exported.  Given a list, each item in the list corresponds
+directly to one of the returned values."
   (etypecase names
     (cl:list   (values (first names) (second names) (third names)))
     (cl:string (values names (translate-python-name names) t))))
@@ -40,6 +51,11 @@
                                                        :not-affecting not-for)))
 
 (defun make-defpyfun-helper-forms (wrapped-args wrapped-forms declarations)
+  "When called, produces a function which is intended to take the place of
+#'CFFI::DEFCFUN-HELPER-FORMS within a CFFI:DEFCFUN expansion.  This is used when
+creating an alternate definition for a C function which either doesn't exist in
+the currently-included Python library (e.g., because it belongs to a newer
+version of Python, or because it's really a preprocessor macro)."
   (lambda (name lisp-name rettype args types options)
     (declare (ignore name lisp-name rettype types options))
     (values '()
@@ -49,6 +65,43 @@
 
 ;;;; Interface for Python API Definitions
 (defmacro defpyfun (name return-type args &body options)
+  "This is, in essence, a wrapper around CFFI::DEFCFUN.
+
+NAME must be suitable for passing to #'PARSE-PYTHON-NAME.  See the docstring of
+that function for more details on the meaning of NAME.
+
+If RETURN-TYPE is a known Python type (that is, it was defined using DEFPYTYPE
+or registered via #'REGISTER-PYTHON-TYPE), then this also produces a second
+function by the same name but with an asterisk appended (think LET vs. LET*)
+which does /not/ do type translation but instead simply returns a pointer to the
+PyObject.  (Any applicable error checking is still performed, however.)  The
+non-translating versions are particularly useful in the cases where you either
+A) specifically want a pointer (e.g., because you're calling PyDict_New and want
+a dictionary to populate rather than an empty hashtable) or B) are getting a
+large structure back and would prefer not to translate the entire thing for the
+one or two values you're actually interested in.
+
+OPTIONS is a list of any, none, or all, of the following forms:
+ (:implementation &body) :: &body is an implicit progn which should be used in
+   place of a foreign-funcall when the foreign function does not exist.  It
+   receives arguments as specified by the arglist.  It is important to note that
+   the provided implementation deals with #'TRANSLATE-TO-FOREIGNed types, and
+   must produce a value suitable for #'TRANSLATE-FROM-FOREIGN.  To put another
+   way, :implementation defines a Lisp version of the C code it replaces.  This
+   is useful for usefully defining functions which are really C macros, as well
+   as functions which don't exist in later/earlier versions of Python.
+ (:requires forms) :: forms should explain under what conditions this function
+   is available.  It is used mainly for documentary purposes.
+ (:documentation docstring) :: The docstring which should be used for this
+   function, if any.
+ (:if-not-exist &body) :: &body is code which should be executed if the
+   specified C function does not exist, an alternate :implementation was not
+   specified, and no requirements are known (:requires).  It defaults to
+   producing an error.  This is probably most useful as a debugging tool to
+   catch functions which are specified in Python's documentation but not
+   exported by the Python library (generally, meaning the \"function\" is really
+   a preprocessor macro).
+"
   (labels ((%make-defcfun (c-name lisp-name return-type args alt-body)
              (let ((docstring (and (stringp (first alt-body)) (first alt-body))))
                `(defcfun (,c-name ,lisp-name) ,return-type
@@ -76,6 +129,7 @@
            ;; Ugh.  But necessary to work with type aliases for when we
            ;; shorten things (e.g., always-error).
            (%known-python-type-p (type)
+             "Returns true if TYPE has been registered as a Python type, or is an alias or wrapper thereof, nil otherwise."
              (etypecase type
                (cffi::foreign-typedef (or (%known-python-type-p (cffi::name type))
                                           (%known-python-type-p (cffi::actual-type type))))
@@ -87,6 +141,7 @@
                (symbol (gethash type *type-map*))))
            ;; convert (can-error pyob) and aliases into (can-error :pointer)
            (%translate-type-for-ptr (type)
+             "Converts a Python type, or an alias or wrapper thereof, into an equivalent, but non-translating, :pointer type."
              (cond
                ((typep type 'can-error) ; delayed type action
                 `(can-error ,(%translate-type-for-ptr (cffi::actual-type type))))
@@ -133,6 +188,10 @@
            ',lisp-name)))))
 
 (defmacro defpyvar (c-name &optional (lisp-name (format-symbol #.*package* "+~A+" (translate-python-name c-name))))
+  "Produces a Lisp variable by the name of LISP-NAME whose value is a pointer to
+the foreign variable C-NAME.  Differs from DEFCVAR in that it does not try to
+dereference the pointer, and so works for the inline objects Python uses.  That
+is, it is the C equivalent of \"lisp_var = &foreign_var\"."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (defparameter ,lisp-name (foreign-symbol-pointer ,c-name))
      #+pyffi.debug (format t "Var ~A is ~A~%" ,c-name ,lisp-name)
@@ -140,6 +199,35 @@
 
 ;;; Interface for Defining Python Types
 (defmacro defpytype (c-name &body options)
+  "Defines a Python Object type, such as PyObject.  This entails creating a
+variable pointing to the \"PyFoo_Type\" type object, the \"PyFoo_Check\" and
+\"PyFoo_CheckExact\" functions, as well as appropriate CFFI types for the
+object (FOO, FOO!, and FOO?) for use as the types in DEFPYFUN forms.
+
+OPTIONS may consist of any of the following forms:
+ (:errorp function) :: A function which determines whether a value of this type
+   indicates the occurrence of an error.  The error-checking function operates
+   on the /untranslated/ C object.
+ (:type lisp-type) :: LISP-TYPE is a Lisp type-specifier, which should cause
+   (typep v lisp-type) to return true in the event the given lisp value V should
+   be converted into the python type being defined.  If unspecified, automagical
+   conversions into PyObjects will not occur (though conversions to the
+   more-specific type currently being specified still will).
+ (:to (value type) &body) :: Defines a function which translates a Lisp object
+   into a Python object.  If unspecified, defaults to performing no translation.
+ (:from (value type) &body) :: Defines a function which translates a Python
+   object into a Lisp object.  If unspecified, defaults to performing no
+   translation (returning a :pointer).
+ (:superclass super) :: In the future, this is expected to be the means of
+   specifying that this particular Python type has a Python superclass of SUPER,
+   to handle the FIXME mentioned in the definition of PyObject.  It currently
+   does nothing.
+
+The :to and :from functions are used both when translating the given type
+specifically (that is, when the specific type is mentioned in a DEFPYFUN form)
+as well as when translating a non-specific PyObject (assuming :type is also
+specified).
+"
   (let* ((lisp-name (translate-python-name c-name))
          (can-error-type (symbolicate lisp-name '#:!))
          (soft-error-type (symbolicate lisp-name '#:?))
@@ -190,7 +278,9 @@
 
 (defmacro defpyfun* (lisp-name list-of-pyfun-args &body options)
   "Takes multiple arguments to defpyfun, and expands into a defpyfun for the
-  first C function which actually exists."
+first C function which actually exists.  This exists mainly in support of the
+PyUnicode functions, which are exported as UCS4 or UCS2 variants depending on
+platform and compiler options."
   (loop :for (c-name return-type args) :in list-of-pyfun-args
         :when (foreign-symbol-pointer c-name)
           :do (return `(defpyfun (,c-name ,lisp-name t) ,return-type ,args ,@options))
