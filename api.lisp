@@ -61,6 +61,7 @@ imports for this macro to expand successfully."
          (pyfunc (%get-function python-name)))
     (with-decrements (pyfunc)
       (multiple-value-bind (required optional rest keywords) (parse-ordinary-lambda-list args)
+        (declare (ignore rest))
         (let* ((docstring (object.get-attr-string pyfunc "__doc__")))
           (with-unique-names (pyfunc)
             `(defun ,lisp-name ,args
