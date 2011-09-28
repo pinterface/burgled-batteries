@@ -13,6 +13,10 @@
   (use-foreign-library python-library))
 
 ;;;; Basic Handling of the PyObject struct
+;; FIXME: We can detect whether Py_TRACE_REFS is enabled either by grovelling,
+;;        /or/ by checking for the existence of either the
+;;        "Py_InitModule4TraceRefs" or "Py_InitModule4TraceRefs_64" function
+;;        (depending on whether we're 32/64-bit).
 (defcstruct %object
   ;; #ifdef Py_TRACE_REFS
   #+pyffi.trace-refs (-ob-next object)
@@ -542,9 +546,29 @@
 (defpyfun "PyImport_ExtendInittab" 0-on-success ((newtab .inittab)))
 
 ;;;; TODO: Data Marshalling Support
-;;;; TODO: Passing Arguments and Building Values
+
+;;;; Passing Arguments and Building Values
+(defpyfun "PyArg_ParseTuple" 0-on-failure ((args tuple) (format :string) &rest))
+#+requires-va_list-support (defpyfun "PyArg_VaParse"    0-on-failure ((args tuple) (format :string) (vargs va_list)))
+#+requires-CHAR*-ARRAY-support (defpyfun "PyArg_ParseTupleAndKeywords"   0-on-failure ((args tuple) (kw dict) (format :string) (keywords (:array :string)) &rest))
+#+requires-va_list-support/CHAR*-ARRAY-support (defpyfun "PyArg_VaParseTupleAndKeywords" 0-on-failure ((args tuple) (kw dict) (format :string) (keywords (:array :string)) (vargs va_list)))
+;(defpyfun "PyArg_Parse" :int ((args object) (format :string) &rest)) ; deprecated?
+(defpyfun "PyArg_UnpackTuple" 0-on-failure ((args tuple) (name :string) (min ssize-t) (max ssize-t) &rest))
+(defpyfun "Py_BuildValue"   object! ((format :string) &rest))
+#+requires-va_list-support (defpyfun "Py_VaBuildValue" object! ((format :string) (vargs va_list)))
+
 ;;;; TODO: String Conversion and Formatting
-;;;; TODO: Reflection
+
+;;;; Reflection
+(defpyfun "PyEval_GetBuiltins" (object! :borrowed) ())
+(defpyfun "PyEval_GetLocals"   (object! :borrowed) ())
+(defpyfun "PyEval_GetGlobals"  (object! :borrowed) ())
+(defpyfun "PyEval_GetFrame" frame-object ())
+;(defpyfun "PyFrame_GetLineNumber" :int ((frame frame-object)))
+(defpyfun "PyEval_GetRestricted" :boolean ())
+(defpyfun "PyEval_GetFuncName" :string ((func object)))
+(defpyfun "PyEval_GetFuncDesc" :string ((func object)))
+
 ;;;; TODO: Codec Registry and Support Functions, Codec Lookup API, Registry API for Unicode Errors
 
 ;;;; Abstract Objects
@@ -1194,8 +1218,63 @@
 (defpyfun "PyCode_New" code! ((argcount :int) (nlocals :int) (stacksize :int) (flags :int) (code object) (consts object) (names object) (varnames object) (freevars object) (cellvars object) (filename object) (name object) (firstlineno :int) (lnotab object)))
 ;(defpyfun "PyCode_NewEmpty" :int ((filename :string) (funcname :string) (firstlineno :int)))
 
+
 ;;;; TODO: Memory Management
-;;;; TODO: Object Implementation Support (Allocating, Structures, Types, GC)
+
+;;;; Object Implementation Support
+;;; Common Object Structures (order switched with next section out of necessity)
+(defctype c-function :pointer) ; PyCFunction (callbacks)
+(defcstruct method-def
+  (name :string)
+  (meth c-function)
+  (flags :int)
+  (doc :string))
+(defcstruct member-def
+  (name :string)
+  (type :int)
+  (offset ssize-t)
+  (flags :int)
+  (doc :string))
+#+requires-POINTER-ARRAY-support (defpyfun "Py_FindMethod" object! ((table (:array method-def)) (ob object) (name :string)))
+
+;;; Allocating Objects on the Heap
+;; FIXME: Should probably make var-object a real type if possible (e.g., via
+;;        defpytype), otherwise make the var-object CFFI type at least behave
+;;        like PyObjects and the like (with automatic refcounting and ability to
+;;        be borrowed so on).
+(defctype var-object :pointer)
+(defpyfun "_PyObject_New" object! ((type type)))
+(defpyfun "_PyObject_NewVar" var-object ((type type) (size ssize-t))) ; FIXME: is this canerr?
+(defpyfun "PyObject_Init" (object! :borrowed) ((op object) (type type)))
+;; FIXME: InitVar returns a borrowed reference
+(defpyfun "PyObject_InitVar" var-object ((op var-object) (type type) (size ssize-t))) ; FIXME: is this canerr?
+(defpyfun "PyObject_Del"  :void ((op object)) (:implementation (object.free op)))
+(defpyfun "PyObject_Free" :void ((op object)))
+(defpyfun "Py_InitModule"  object! ((name :string) (methods method-def))
+  (:implementation (.init-module4 name methods (null-pointer) (null-pointer) +api-version+)))
+(defpyfun "Py_InitModule3" object! ((name :string) (methods method-def) (doc :string))
+  (:implementation (.init-module4 name methods doc (null-pointer) +api-version+)))
+(defpyfun* .init-module4
+    (("Py_InitModule4"             object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
+     ("Py_InitModule4_64"          object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
+     ("Py_InitModule4TraceRefs"    object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
+     ("Py_InitModule4TraceRefs_64" object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))))
+
+;;; Type Objects
+;; NOTE: The defcstruct is above, by (defpytype "PyType" ...)
+
+;;; TODO? Number Object Structures
+;;; TODO? Mapping Object Structures
+;;; TODO? Sequence Object Structures
+;;; TODO? Buffer Object Structures
+
+;;; Supporting Cyclic Garbage Collection
+(defpyfun "_PyObject_GC_New" object! ((type type)))
+(defpyfun "_PyObject_GC_NewVar" var-object ((type type) (size ssize-t))) ; FIXME: is this canerr?
+(defpyfun "_PyObject_GC_Resize" object! ((op var-object) (newsize ssize-t)))
+(defpyfun "PyObject_GC_Track"   :void ((op object)))
+(defpyfun "PyObject_GC_Del"     :void ((op object))) ; op MUST have been malloced using object.gc-new
+(defpyfun "PyObject_GC_UnTrack" :void ((op object))) ; op MUST have been malloced using object.gc-new
 
 
 #+(or) ;; WARNING: don't trace if lots of data.  (feedparser.parse(my-lj) produces ~195k lines)

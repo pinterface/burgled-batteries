@@ -1,6 +1,7 @@
 (in-package #:python.cffi)
 
 (include "Python.h")
+(include "structmember.h") ; needed for member type flags
 
 ;; Sizes
 (ctype ssize-t "Py_ssize_t")
@@ -61,3 +62,36 @@
 (constant (+tpflags.default-external+         "Py_TPFLAGS_DEFAULT_EXTERNAL")         :type integer)
 (constant (+tpflags.default-core+             "Py_TPFLAGS_DEFAULT_CORE")             :type integer)
 (constant (+tpflags.default+                  "Py_TPFLAGS_DEFAULT")                  :type integer)
+
+;; Method Call Flags
+(constant (+meth.varargs+  "METH_VARARGS")  :type integer)
+(constant (+meth.keywords+ "METH_KEYWORDS") :type integer)
+(constant (+meth.noargs+   "METH_NOARGS")   :type integer)
+(constant (+meth.o+        "METH_O")        :type integer)
+(constant (+meth.oldargs+  "METH_OLDARGS")  :type integer) ; deprecated
+(constant (+meth.class+    "METH_CLASS")    :type integer)
+(constant (+meth.static+   "METH_STATIC")   :type integer)
+(constant (+meth.coexist+  "METH_COEXIST")  :type integer)
+
+;; Member Type Flags
+(constant (+type.short+     "T_SHORT")     :type integer)
+(constant (+type.int+       "T_INT")       :type integer)
+(constant (+type.long+      "T_LONG")      :type integer)
+(constant (+type.float+     "T_FLOAT")     :type integer)
+(constant (+type.double+    "T_DOUBLE")    :type integer)
+(constant (+type.string+    "T_STRING")    :type integer)
+(constant (+type.object+    "T_OBJECT")    :type integer)
+(constant (+type.object-ex+ "T_OBJECT_EX") :type integer)
+(constant (+type.char+      "T_CHAR")      :type integer)
+(constant (+type.byte+      "T_BYTE")      :type integer)
+(constant (+type.ubyte+     "T_UBYTE")     :type integer)
+(constant (+type.uint+      "T_UINT")      :type integer)
+(constant (+type.ushort+    "T_USHORT")    :type integer)
+(constant (+type.ulong+     "T_ULONG")     :type integer)
+(constant (+type.bool+      "T_BOOL")      :type integer)
+(constant (+type.longlong+  "T_LONGLONG")  :type integer)
+(constant (+type.ulonglong+ "T_ULONGLONG") :type integer)
+(constant (+type.ssize-t+   "T_PYSSIZET")  :type integer)
+
+;; API Version
+(constant (+api-version+ "PYTHON_API_VERSION") :type integer)
