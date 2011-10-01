@@ -187,15 +187,24 @@ OPTIONS is a list of any, none, or all, of the following forms:
            ,(when ptr-name `(export ',ptr-name))
            ',lisp-name)))))
 
-(defmacro defpyvar (c-name &optional (lisp-name (format-symbol #.*package* "+~A+" (translate-python-name c-name))))
+(defmacro defpyvar (c-name &optional lisp-name (cffi-type :pointer))
   "Produces a Lisp variable by the name of LISP-NAME whose value is a pointer to
-the foreign variable C-NAME.  Differs from DEFCVAR in that it does not try to
-dereference the pointer, and so works for the inline objects Python uses.  That
-is, it is the C equivalent of \"lisp_var = &foreign_var\"."
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (defparameter ,lisp-name (foreign-symbol-pointer ,c-name))
-     #+pyffi.debug (format t "Var ~A is ~A~%" ,c-name ,lisp-name)
-     (export ',lisp-name)))
+the foreign variable C-NAME.  Differs from DEFCVAR in that, if C-NAME begins
+with an ampersand (#\\&) it does not try to dereference the pointer, and so
+works for the inline objects Python uses.  That is, it is the C equivalent of
+\"lisp_var = &foreign_var\".  Otherwise, just expands into a DEFCVAR.
+
+Because this is intended for use in our internal machinations, this returns
+pointers by default.  However, you can override that by specifying CFFI-TYPE."
+  (let* ((deref (char= #\& (char c-name 0)))
+         (c-name (subseq c-name (if deref 1 0)))
+         (lisp-name (or lisp-name (symbolicate "+" (translate-python-name c-name) "+"))))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       ,(if deref
+            `(defparameter ,lisp-name (foreign-symbol-pointer ,c-name))
+            `(defcvar (,c-name ,lisp-name :read-only t) ,cffi-type))
+       #+pyffi.debug (format t "Var ~A is ~A~%" ,c-name ,lisp-name)
+       (export ',lisp-name))))
 
 ;;; Interface for Defining Python Types
 (defmacro defpytype (c-name &body options)

@@ -116,7 +116,7 @@
 (defpytype "PyType")
 
 ;; Docs say use Py_None, but _Py_NoneStruct is what's exported
-(defpyvar "_Py_NoneStruct" +None+)
+(defpyvar "&_Py_NoneStruct" +None+)
 (defun %none.check (o) (pointer-eq +None+ o))
 
 ;;; Numeric Types
@@ -125,8 +125,8 @@
   (:to   (value type) (int.from-long* value))
   (:from (value type) (int.as-long value)))
 
-(defpyvar "_Py_ZeroStruct" +False+)
-(defpyvar "_Py_TrueStruct" +True+)
+(defpyvar "&_Py_ZeroStruct" +False+)
+(defpyvar "&_Py_TrueStruct" +True+)
 (defpytype "PyBool"
   (:superclass "PyInt")
   (:type boolean)
@@ -440,7 +440,7 @@
 (defpyfun "PyErr_WarnEx" 0-on-success ((category object) (message :string) (stacklevel :int)))
 (defpyfun "PyErr_Warn"   0-on-success ((category object) (message :string)))
 (defpyfun "PyErr_WarnExplicit" :int ((category object) (message :string) (filename :string) (lineno :int) (module :string) (registry object))) ; FIXME: what's the return value mean?
-(defcvar ("Py_Py3kWarningFlag" *err.warn-py3k*) :boolean)
+(defpyvar "Py_Py3kWarningFlag" *err.warn-py3k* :boolean)
 (defpyvar "PyExc_DeprecationWarning")
 (defpyfun "PyErr_WarnPy3k" 0-on-success ((message :string) (stacklevel :int))
   (:implementation
