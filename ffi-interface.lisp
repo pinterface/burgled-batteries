@@ -65,8 +65,8 @@
     (loop :for v :being :the :hash-values :of *type-map*
           :for foreign-type := (funcall v reference-type)
           :when (funcall (slot-value foreign-type 'lisp-is-type) value)
-            :do (return (translate-to-foreign value foreign-type))
-          :finally (return value)))
+            :do (cl:return (translate-to-foreign value foreign-type))
+          :finally (cl:return value)))
   (:from (value type)
     (unless (null-pointer-p value)
       ;; NECESSARY!  If we return the pointer, the later .DEC-REF in tff will
@@ -79,8 +79,8 @@
       (loop :for v :being :the :hash-values :of *type-map*
             :for foreign-type := (funcall v reference-type)
             :when (funcall (slot-value foreign-type 'foreign-is-type) value)
-              :do (return (translate-from-foreign value foreign-type))
-            :finally (return value)))))
+              :do (cl:return (translate-from-foreign value foreign-type))
+            :finally (cl:return value)))))
 
 ;; PyType objects have a structure with something we want.  Unfortunately for
 ;; us, the part we want is a ways into it.
@@ -216,7 +216,7 @@
     (loop :with list = (list.new* (length value))
           :for item :in value :and i :from 0
           :do (list.set-item list i item)
-          :finally (return list)))
+          :finally (cl:return list)))
   (:from (value type)
     (loop :for i :from 0 :to (1- (list.size value))
           :collect (list.get-item value i))))
@@ -420,9 +420,9 @@
 (defpyfun "PyErr_Occurred" (object :borrowed) ())
 (defpyfun "PyErr_ExceptionMatches"      :boolean ((exc object)))
 (defpyfun "PyErr_GivenExceptionMatches" :boolean ((given object) (exc object)))
-#+requires-call-by-reference-support (defpyfun "PyErr_NormalizeException" :void ((exc (:ref object)) (val (:ref object)) (tb (:ref object))))
+(defpyfun "PyErr_NormalizeException" :void ((exc (place object)) (val (place object)) (tb (place object))))
 (defpyfun "PyErr_Clear" :void ())
-#+requires-call-by-reference-support (defpyfun "PyErr_Fetch" :void ((ptype (:ref object)) (pvalue (:ref object)) (ptraceback (:ref object))))
+(defpyfun "PyErr_Fetch" :void ((ptype (return object)) (pvalue (return object)) (ptraceback (return object))))
 (defpyfun "PyErr_Restore" :void ((type object) (value object) (traceback object)))
 (defpyfun "PyErr_SetString" :void ((type object) (message :string)))
 (defpyfun "PyErr_SetObject" :void ((type object) (value object)))
@@ -464,15 +464,15 @@
 (defpyfun "PyUnicodeDecodeError_GetObject"    object ((exc object)))
 (defpyfun "PyUnicodeEncodeError_GetObject"    object ((exc object)))
 (defpyfun "PyUnicodeTranslateError_GetObject" object ((exc object)))
-#+requires-call-by-reference-support (defpyfun "PyUnicodeDecodeError_GetStart"    0-on-success ((exc object) (start (:pointer ssize-t))))
-#+requires-call-by-reference-support (defpyfun "PyUnicodeEncodeError_GetStart"    0-on-success ((exc object) (start (:pointer ssize-t))))
-#+requires-call-by-reference-support (defpyfun "PyUnicodeTranslateError_GetStart" 0-on-success ((exc object) (start (:pointer ssize-t))))
+(defpyfun "PyUnicodeDecodeError_GetStart"    0-on-success ((exc object) (start (return ssize-t))))
+(defpyfun "PyUnicodeEncodeError_GetStart"    0-on-success ((exc object) (start (return ssize-t))))
+(defpyfun "PyUnicodeTranslateError_GetStart" 0-on-success ((exc object) (start (return ssize-t))))
 (defpyfun "PyUnicodeDecodeError_SetStart"    0-on-success ((exc object) (start ssize-t)))
 (defpyfun "PyUnicodeEncodeError_SetStart"    0-on-success ((exc object) (start ssize-t)))
 (defpyfun "PyUnicodeTranslateError_SetStart" 0-on-success ((exc object) (start ssize-t)))
-#+requires-call-by-reference-support (defpyfun "PyUnicodeDecodeError_GetEnd"    0-on-success ((exc object) (end (:pointer ssize-t))))
-#+requires-call-by-reference-support (defpyfun "PyUnicodeEncodeError_GetEnd"    0-on-success ((exc object) (end (:pointer ssize-t))))
-#+requires-call-by-reference-support (defpyfun "PyUnicodeTranslateError_GetEnd" 0-on-success ((exc object) (end (:pointer ssize-t))))
+(defpyfun "PyUnicodeDecodeError_GetEnd"    0-on-success ((exc object) (end (return ssize-t))))
+(defpyfun "PyUnicodeEncodeError_GetEnd"    0-on-success ((exc object) (end (return ssize-t))))
+(defpyfun "PyUnicodeTranslateError_GetEnd" 0-on-success ((exc object) (end (return ssize-t))))
 (defpyfun "PyUnicodeDecodeError_SetEnd"    0-on-success ((exc object) (end ssize-t)))
 (defpyfun "PyUnicodeEncodeError_SetEnd"    0-on-success ((exc object) (end ssize-t)))
 (defpyfun "PyUnicodeTranslateError_SetEnd" 0-on-success ((exc object) (end ssize-t)))
@@ -589,7 +589,7 @@
   (:implementation (object.set-attr-string o attr-name (null-pointer))))
 (defpyfun "PyObject_RichCompare"     object! ((o1 object) (o2 object) (opid :int)))
 (defpyfun "PyObject_RichCompareBool" boolean! ((o1 object) (o2 object) (opid :int)))
-#+requires-call-by-reference-support (defpyfun "PyObject_Cmp" boolean! ((o1 object) (o2 object) (result (:ref :int))))
+(defpyfun "PyObject_Cmp" 0-on-success ((o1 object) (o2 object) (result (return :int))))
 (defpyfun "PyObject_Compare" boolean! ((o1 object) (o2 object)))
 (defpyfun "PyObject_Repr" object! ((o object)))
 (defpyfun "PyObject_Str"  object! ((o object)))
@@ -658,8 +658,8 @@
 (defpyfun "PyNumber_InPlaceAnd"         object! ((o1 object) (o2 object)))
 (defpyfun "PyNumber_InPlaceXor"         object! ((o1 object) (o2 object)))
 (defpyfun "PyNumber_InPlaceOr"          object! ((o1 object) (o2 object)))
-#+requires-call-by-reference-support (defpyfun "PyNumber_Coerce"   0-on-success ((p1 (:ref object)) (p2 (:ref object))))
-#+requires-call-by-reference-support (defpyfun "PyNumber_CoerceEx" 0-on-success ((p1 (:ref object)) (p2 (:ref object))))
+(defpyfun "PyNumber_Coerce"   0-on-success ((p1 (place object)) (p2 (place object))))
+(defpyfun "PyNumber_CoerceEx" 0-on-success ((p1 (place object)) (p2 (place object))))
 (defpyfun "PyNumber_Int"    object! ((o object)))
 (defpyfun "PyNumber_Long"   object! ((o object)))
 (defpyfun "PyNumber_Float"  object! ((o object)))
@@ -751,7 +751,10 @@
 
 ;;;; Numeric Objects
 ;;; Plain Integer Objects
-#+requires-call-by-reference-support (defpyfun "PyInt_FromString"  object! ((str :string) (pend (:ref :string)) (base :int)))
+;; FIXME: The docs suggest (int.from-string "123ham" 10) should return 123,
+;;        "ham" but I get a VALUE-ERROR instead.  Am /I/ supposed to point pend
+;;        there?
+(defpyfun "PyInt_FromString"  object! ((str :string) (pend (return :string)) (base :int)))
 (defpyfun "PyInt_FromLong"    int! ((ival :long)))
 (defpyfun "PyInt_FromSsize_t" int! ((ival ssize-t)))
 (defpyfun "PyInt_FromSize_t"  int! ((ival size-t)))
@@ -773,12 +776,14 @@
 (defpyfun "PyLong_FromLongLong"         long! ((v :long-long)))
 (defpyfun "PyLong_FromUnsignedLongLong" long! ((v :unsigned-long-long)))
 (defpyfun "PyLong_FromDouble"           long! ((v :double)))
-#+requires-call-by-reference-support (defpyfun "PyLong_FromString"           long! ((str :string) (pend (:ref :string)) (base :int)))
+(defpyfun "PyLong_FromString"           long! ((str :string) (pend (return :string)) (base :int)))
 (defpyfun "PyLong_FromUnicode"          long! ((u unicode) (length ssize-t) (base :int)))
 #+requires-VOID*-support (defpyfun "PyLong_FromVoidPtr"          long! ((p (:pointer :void))))
 (defpyfun "PyLong_AsLong"                 (soft-error :long)               ((pylong object)))
-#+requires-call-by-reference-support (defpyfun "PyLong_AsLongAndOverflow"      (soft-error :long)               ((pylong object) (overflow (:pointer :int))))
-#+requires-call-by-reference-support (defpyfun "PyLong_AsLongLongAndOverflow"  (soft-error :long-long)          ((pylong object) (overflow (:pointer :int))))
+(defpyfun "PyLong_AsLongAndOverflow"      (soft-error :long)               ((pylong object) (overflow (return :int)))
+  (:requires "Python 2.7 (or newer)"))
+(defpyfun "PyLong_AsLongLongAndOverflow"  (soft-error :long-long)          ((pylong object) (overflow (return :int)))
+  (:requires "Python 2.7 (or newer)"))
 (defpyfun "PyLong_AsSsize_t"              (soft-error ssize-t)             ((pylong object)))
 (defpyfun "PyLong_AsUnsignedLong"         (soft-error :ulong)              ((pylong object)))
 (defpyfun "PyLong_AsLongLong"             (soft-error :long-long)          ((pylong object)))
@@ -789,7 +794,7 @@
 #+requires-VOID*-support (defpyfun "PyLong_AsVoidPtr"              (can-error (:pointer :void))     ((pylong object)))
 
 ;;; Floating Point Objects
-#+requires-call-by-reference-support (defpyfun "PyFloat_FromString" object! ((str object) (pend (:ref :string))))
+(defpyfun "PyFloat_FromString" object! ((str object) (pend (return :string))))
 (defpyfun "PyFloat_FromDouble" float! ((v :double)))
 (defpyfun "PyFloat_AsDouble" (soft-error :double) ((pyfloat object)))
 (defpyfun "PyFloat_GetInfo" object! ())
@@ -926,10 +931,9 @@
 (defpyfun* unicode.decode-utf8
     (("PyUnicodeUCS2_DecodeUTF8" unicode! ((s utf8-string) (size ssize-t) (errors :string)))
      ("PyUnicodeUCS4_DecodeUTF8" unicode! ((s utf8-string) (size ssize-t) (errors :string)))))
-#+requires-call-by-reference-support
 (defpyfun* unicode.decode-utf8-stateful
-    (("PyUnicodeUCS2_DecodeUTF8Stateful" unicode! ((s :string) (size ssize-t) (errors :string) (consumed (:ref ssize-t))))
-     ("PyUnicodeUCS4_DecodeUTF8Stateful" unicode! ((s :string) (size ssize-t) (errors :string) (consumed (:ref ssize-t))))))
+    (("PyUnicodeUCS2_DecodeUTF8Stateful" unicode! ((s :string) (size ssize-t) (errors :string) (consumed (return ssize-t))))
+     ("PyUnicodeUCS4_DecodeUTF8Stateful" unicode! ((s :string) (size ssize-t) (errors :string) (consumed (return ssize-t))))))
 (defpyfun* unicode.encode-utf8
     (("PyUnicodeUCS2_EncodeUTF8" string! ((s ucs2-string) (size ssize-t) (errors :string)))
      ("PyUnicodeUCS4_EncodeUTF8" string! ((s ucs4-string) (size ssize-t) (errors :string)))))
@@ -1126,7 +1130,7 @@
 (defpyfun "PyTuple_GetItem" (object! :borrowed) ((p tuple) (pos ssize-t)))
 (defpyfun "PyTuple_GetSlice" tuple! ((p tuple) (low ssize-t) (high ssize-t)))
 (defpyfun "PyTuple_SetItem" 0-on-success ((p tuple) (pos ssize-t) (o (object :stolen))))
-#+requires-call-by-reference-support (defpyfun "_PyTuple_Resize" 0-on-success ((p (:ref object)) (newsize ssize-t)))
+(defpyfun "_PyTuple_Resize" 0-on-success ((p (place tuple)) (newsize ssize-t)))
 (defpyfun "PyTuple_ClearFreeList" :int ()
   (:requires "Python 2.6 (or newer)"))
 
@@ -1160,7 +1164,7 @@
 (defpyfun "PyDict_Keys"    list! ((p dict)))
 (defpyfun "PyDict_Values"  list! ((p dict)))
 (defpyfun "PyDict_Size" ssize-t! ((p dict)))
-#+requires-call-by-reference-support (defpyfun "PyDict_Next" :int ((p dict) (ppos (:ref ssize-t)) (pkey (:ref object)) (pvalue (:ref object))))
+(defpyfun "PyDict_Next" :boolean ((p dict) (ppos (place ssize-t)) (pkey (return (object :borrowed))) (pvalue (return (object :borrowed)))))
 (defpyfun "PyDict_Merge"  0-on-success ((a dict) (b object) (override :boolean)))
 (defpyfun "PyDict_Update" 0-on-success ((a dict) (b object)))
 (defpyfun "PyDict_MergeFromSeq2" 0-on-success ((a dict) (seq2 object) (override :boolean)))

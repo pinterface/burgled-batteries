@@ -107,6 +107,16 @@ OPTIONS is a list of any, none, or all, of the following forms:
                `(defcfun (,c-name ,lisp-name) ,return-type
                   ,@(when docstring `(,docstring))
                   ,@args)))
+           (%make-cwrapper (internal-name lisp-name args)
+             (with-unique-names (accum retval)
+               `(defun ,lisp-name ,(mapcar #'first (remove-if (rcurry #'typep 'return) args :key #'fourth))
+                  (let ((,accum (cl:list))
+                        (,retval '#:you-should-never-see-this-value))
+                    ,@(%wrap-arg args
+                                 `((setf ,retval (,internal-name ,@(mapcar #'%choose-symbol args))))
+                                 accum)
+                    (push ,retval ,accum)
+                    (values-list ,accum)))))
            (%make-altfun (c-name lisp-name return-type c-args alt-body)
              (multiple-value-bind (alt-body decl doc)
                  (parse-body alt-body :documentation t)
@@ -131,6 +141,7 @@ OPTIONS is a list of any, none, or all, of the following forms:
            (%known-python-type-p (type)
              "Returns true if TYPE has been registered as a Python type, or is an alias or wrapper thereof, nil otherwise."
              (etypecase type
+               (output-arg (%known-python-type-p (real-type type)))
                (cffi::foreign-typedef (or (%known-python-type-p (cffi::name type))
                                           (%known-python-type-p (cffi::actual-type type))))
                (cffi::enhanced-foreign-type (or (%known-python-type-p (cffi::unparsed-type type))
@@ -147,6 +158,7 @@ OPTIONS is a list of any, none, or all, of the following forms:
                 `(can-error ,(%translate-type-for-ptr (cffi::actual-type type))))
                (t
                 (etypecase type
+                  (output-arg `(,(first (cffi::unparsed-type type)) ,(%translate-type-for-ptr (real-type type))))
                   (cffi::foreign-typedef (%translate-type-for-ptr (cffi::actual-type type)))
                   (cffi::enhanced-foreign-type
                    (let ((utype (cffi::unparsed-type type)))
@@ -157,16 +169,36 @@ OPTIONS is a list of any, none, or all, of the following forms:
     (multiple-value-bind (name lisp-name exportp) (parse-python-name name)
       (let* ((parsed-type (parse-type return-type))
              (ptr-name (when (%known-python-type-p parsed-type)
-                                 (format-symbol (symbol-package lisp-name) "~A*" lisp-name)))
+                         (format-symbol (symbol-package lisp-name) "~A*" lisp-name)))
              (ptr-type (when ptr-name (%translate-type-for-ptr parsed-type)))
              (lisp-args (mapcar (lambda (x) (if (consp x) (first x) x)) args))
              (documentation (assoc-value options :documentation))
              (alternate     (assoc-value options :implementation))
              (requires      (assoc-value options :requires))
              (if-not-exist  (or (assoc-value options :if-not-exist)
-                                `((error "The C function ~S does not appear to exist." ,name)))))
+                                `((error "The C function ~S does not appear to exist." ,name))))
+             (normalized-args (normalize-args args))
+             (use-wrapper (some (lambda (a) (typep (fourth a) 'output-arg)) normalized-args)))
         `(eval-when (:compile-toplevel :load-toplevel :execute)
            ,(cond
+              ((and (foreign-symbol-pointer name)
+                    use-wrapper)
+               (let ((internal-name (symbolicate "%" lisp-name))
+                     (args (normalize-args args)))
+                 `(progn
+                    ,(%make-defcfun name internal-name return-type
+                                    (mapcar (lambda (arg) (cl:list (first arg) (third arg))) args)
+                                    documentation)
+                    #+(or)
+                    (defcfun (,name ,internal-name) ,return-type
+                      ,@(mapcar (lambda (arg) (cl:list (first arg) (third arg))) args))
+                    ,(%make-cwrapper internal-name lisp-name args)
+                    ,(%make-cwrapper internal-name (symbolicate lisp-name "*")
+                                     (mapcar (lambda (arg) `(,@(butlast arg)
+                                                             ,(if (%known-python-type-p (fourth arg))
+                                                                  (parse-type (%translate-type-for-ptr (fourth arg)))
+                                                                  (fourth arg))))
+                                             args)))))
               ((foreign-symbol-pointer name)
                `(progn
                   ,(%make-defcfun name lisp-name return-type args documentation)
@@ -292,7 +324,7 @@ PyUnicode functions, which are exported as UCS4 or UCS2 variants depending on
 platform and compiler options."
   (loop :for (c-name return-type args) :in list-of-pyfun-args
         :when (foreign-symbol-pointer c-name)
-          :do (return `(defpyfun (,c-name ,lisp-name t) ,return-type ,args ,@options))
+          :do (cl:return `(defpyfun (,c-name ,lisp-name t) ,return-type ,args ,@options))
         :finally (error "Unable to find suitable C definition to create function ~A~%" lisp-name)))
 
 ;;;; Translation Helpers for Functions Which Return Error Indicators
