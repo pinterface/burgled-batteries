@@ -1,6 +1,18 @@
 (in-package #:python.cffi)
 
 ;;;; FFI -> Lisp Name Translation
+(defun translate-camel-case (name)
+  (ensure-symbol
+   (with-output-to-string (s)
+     (loop :for a :across (subseq name 0)
+           :for b :across (subseq name 1)
+           :do (cond
+                 ((and (not (upper-case-p a))
+                       (upper-case-p b))
+                  (format s "~C~C" (char-upcase a) #\-))
+                 (t (princ (char-upcase a) s))))
+     (princ (char-upcase (char name (1- (length name)))) s))
+   #.*package*))
 (defun translate-python-name (c-name)
   "Translates a Python name such as PyName into a lisp name, by removing the Py
 prefix, and converting CamelCase to hyphen-separated.  The first underscore is
@@ -373,9 +385,12 @@ platform and compiler options."
 
 (defmethod translate-from-foreign (value (type can-error))
   (if (funcall (error-value-p type) value)
-      (if #+(or) (error-is-fetchable-p type) (null-pointer-p (err.occurred*))
-          (error "Unfetchable error in Python.")
-          (raise-python-exception))
+      (cond
+        ((not (error-is-fetchable-p type))
+         (error 'unfetchable-python-error :value value :type type))
+        ((null-pointer-p (err.occurred*))
+         (error 'unfetched-python-error :value value :type type))
+        (t (raise-python-exception)))
       (translate-from-foreign value (cffi::actual-type type))))
 
 #+(or) ;; no translate-to-foreign
@@ -457,17 +472,111 @@ platform and compiler options."
       (setf (aref array i) (mem-aref value :uchar i)))))
 
 ;;; FFI -> Lisp Error Translation
-(define-condition python-error ()
-  ((code :initarg :exc :reader exception))
-  (:report (lambda (c s)
-             (format s "Python error: ~a" (exception c)))))
+(define-condition python-condition () ()
+  (:documentation "The base condition type for all conditions dealing with the Python interpreter."))
+(define-condition python-warning (python-condition warning) ()
+  (:documentation "The base condition type for all Python-issued warnings."))
+(define-condition python-error (python-condition error)
+  ((exception-type :initarg :type)
+   (exception-value :initarg :value)
+   (exception-trace :initarg :trace))
+  (:documentation "The base condition type for all Python-issued errors."))
+
+(define-condition unfetched-python-error (python-error)
+  ((returned-value :initarg :value)
+   (cffi-type :initarg :type))
+  (:documentation "The error used when a Python error occurred, but could not be fetched.  This condition occurring, rather than UNFETCHABLE-PYTHON-ERROR, is almost certainly a bug."))
+(define-condition unfetchable-python-error (unfetched-python-error) ()
+  (:documentation "The error used when a Python error is unfetchable (e.g., for PyRun_SimpleString)."))
+(define-condition early-python-error (python-error) ()
+  (:documentation "The error used when a Python error is fetchable, but a more specific error cannot be determined.  This might occur during loading, when the initial Python condition relationships are being built up."))
+
+(defparameter *exception-map* (make-hash-table :test 'equal)
+  "A mapping from Python exceptions to Lisp conditions.")
+(defun register-exception-signaller (python-exception lisp-fn)
+  "Registers the mapping of a Python exception into a Lisp condition.  To be precise, maps to a Lisp function which given a pointer to such a Python exception, signals an appropriate Lisp condition."
+  (setf (gethash python-exception *exception-map*) lisp-fn))
+(defun get-exception-signaller (python-exception)
+  (gethash python-exception *exception-map* (lambda (e v b) (error 'early-python-error :type e :value v :trace b))))
 
 (defun raise-python-exception ()
-  (let* ((exc (err.occurred*))
-         (desc (object.str exc)))
-    (unwind-protect
-         (error 'python-error :exc desc)
-      (err.clear))))
+  (let ((exception (err.occurred*)))
+    (when (null-pointer-p exception) (error 'unfetched-python-error))
+    (multiple-value-bind (type value traceback)
+        (err.fetch-normalized*) ; fetch automatically clears the error
+      (funcall (get-exception-signaller (%object.get-attr-string type "__name__")) type value traceback))))
 
-;; TODO: Create a defpyexception/defpyerr macro which allows us to convert
-;;       between Python exceptions and Lisp conditions.
+(defun err.fetch-normalized* ()
+  (multiple-value-bind (& type value traceback)
+      (err.fetch*)
+    (declare (ignore &))
+    (multiple-value-bind (& type value traceback)
+        (err.normalize-exception* type value traceback)
+      (declare (ignore &))
+      (values type value traceback))))
+
+(defun %foreign-symbol-value (symbol type)
+  (mem-ref (cffi::fs-pointer-or-lose symbol :default) type))
+(defun %object.get-attr-string (o string)
+  (when (object.has-attr-string o string)
+    (object.get-attr-string o string)))
+
+(defmacro defpyexception (python-name (&rest lisp-superclasses) (&rest slots) &body options)
+  (let* ((lisp-condition-name (translate-camel-case python-name))
+         (c-name (format nil "PyExc_~A" python-name))
+         (lisp-var-name (symbolicate "+" (translate-python-name c-name) "+"))
+         ;; Hrm... we can use __bases__ to automatically fill in the
+         ;; superclasses.  Unfortunately, that requires waiting until after the
+         ;; object stuff is defined to define the errors.  But...the object
+         ;; functions might produce errors.  Well, poo.  Circular dependencies.
+         ;; (Though I guess the object functions shouldn't produce errors
+         ;; operating on error objects.)
+         (python-superclasses (remove "object"
+                                      (map 'cl:list
+                                           (lambda (o) (%object.get-attr-string o "__name__"))
+                                           (%object.get-attr-string (%foreign-symbol-value c-name :pointer) "__bases__"))
+                                      :test #'string=))
+         (slot-specs (mapcar (lambda (slot-spec)
+                               (destructuring-bind (names &rest keys) slot-spec
+                                 (multiple-value-bind (lisp-slot python-attribute)
+                                     (cffi::parse-name-and-options names)
+                                   (declare (ignore python-attribute))
+                                   `(,lisp-slot ,@keys))))
+                             slots))
+         (attribute-specs (mapcar (lambda (slot-spec)
+                                    (destructuring-bind (names &rest keys) slot-spec
+                                      (multiple-value-bind (lisp-slot python-attribute)
+                                          (cffi::parse-name-and-options names)
+                                        (declare (ignore lisp-slot))
+                                        `(,python-attribute ,(cadr (member :initarg keys))))))
+                                  slots))
+         (docstring (or (first (assoc-value options :documentation))
+                        (%object.get-attr-string (%foreign-symbol-value c-name :pointer) "__doc__")))
+         (signal-fn (or (assoc-value options :converter)
+                        ;; FIXME: While auto-generation of the signal function
+                        ;; is nice, this implementation doesn't work for
+                        ;; subclasses (e.g., OSError subclassing
+                        ;; EnvironmentError won't do the EnvironmentError bits)
+                        `((e v b)
+                          (error ',lisp-condition-name
+                                 :type e :value v :trace b
+                                 ,@(mapcan (lambda (attr) `(,(second attr) (%object.get-attr-string v ,(first attr))))
+                                           (remove nil attribute-specs :key #'second)))))))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       ,(unless (boundp lisp-var-name) `(defpyvar ,c-name)) ; Unless is TEMPORARY.
+       ;;(defcvar (,python-name ,lisp-var-name :read-only t) :pointer)
+       ;;(defparameter ,lisp-var-name (pyffi:eval* ,python-name))
+       (define-condition ,lisp-condition-name
+           (,@(mapcar #'translate-camel-case python-superclasses)
+            ,@(or lisp-superclasses '(python-condition)))
+         ,slot-specs
+         (:documentation ,docstring))
+       (register-exception-signaller ,python-name
+                                     ,(cond
+                                        ((functionp (first signal-fn))
+                                         (car signal-fn))
+                                        ((member (caar signal-fn) '(lambda cl:function))
+                                         (car signal-fn))
+                                        (t
+                                         `(lambda ,(first signal-fn) ,@(rest signal-fn)))))
+       ',lisp-condition-name)))
