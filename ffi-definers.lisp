@@ -190,7 +190,7 @@ OPTIONS is a list of any, none, or all, of the following forms:
              (if-not-exist  (or (assoc-value options :if-not-exist)
                                 `((error "The C function ~S does not appear to exist." ,name))))
              (normalized-args (normalize-args args))
-             (use-wrapper (some (lambda (a) (typep (fourth a) 'output-arg)) normalized-args)))
+             (use-wrapper (some (lambda (a) (and (consp a) (typep (fourth a) 'output-arg))) normalized-args)))
         `(eval-when (:compile-toplevel :load-toplevel :execute)
            ,(cond
               ((and (foreign-symbol-pointer name)
