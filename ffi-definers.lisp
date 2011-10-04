@@ -53,9 +53,11 @@ directly to one of the returned values."
     (cl:list   (values (first names) (second names) (third names)))
     (cl:string (values names (translate-python-name names) t))))
 
-(defvar *type-map* (make-hash-table))
-(defun register-python-type (python-type lisp-type)
-  (setf (gethash python-type *type-map*) lisp-type))
+(defvar *type-map* (cl:list) "An association list of lisp names for foreign Python types (symbols) to type parsers.")
+(defun register-python-type (lisp-name type-parser)
+  (if-let ((assoc (assoc lisp-name *type-map*)))
+    (setf (cdr assoc) type-parser)
+    (push (cons lisp-name type-parser) *type-map*)))
 
 (defun %filter-declarations (decls &key for not-for)
   (build-declarations 'declare (filter-declaration-env (parse-declarations decls)
@@ -161,7 +163,7 @@ OPTIONS is a list of any, none, or all, of the following forms:
                (cffi::named-foreign-type nil)
                (cffi::foreign-built-in-type nil)
                (cl:list (%known-python-type-p (car type)))
-               (symbol (gethash type *type-map*))))
+               (symbol (assoc-value *type-map* type))))
            ;; convert (can-error pyob) and aliases into (can-error :pointer)
            (%translate-type-for-ptr (type)
              "Converts a Python type, or an alias or wrapper thereof, into an equivalent, but non-translating, :pointer type."

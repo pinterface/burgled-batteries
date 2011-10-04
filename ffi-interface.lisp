@@ -62,8 +62,8 @@
 (defpytype "PyObject"
   (:errorp #'null-pointer-p)
   (:to (value type)
-    (loop :for v :being :the :hash-values :of *type-map*
-          :for foreign-type := (funcall v reference-type)
+    (loop :for (lisp-name . type-parser) :in *type-map*
+          :for foreign-type := (funcall type-parser reference-type)
           :when (funcall (slot-value foreign-type 'lisp-is-type) value)
             :do (cl:return (translate-to-foreign value foreign-type))
           :finally (cl:return value)))
@@ -73,14 +73,14 @@
       ;; be too early; if we convert to a subtype of PyObject, that conversion
       ;; will also trigger a .DEC-REF, taking us to zero before we're ready.
       (unless (borrowed-reference-p type) (.inc-ref value))
-      ;; FIXME: Need a way to pick from multiple types.  Because PyBool is a
-      ;;        subclass of PyInt, right now which we get depends on the hash
-      ;;        order.
-      (loop :for v :being :the :hash-values :of *type-map*
-            :for foreign-type := (funcall v reference-type)
-            :when (funcall (slot-value foreign-type 'foreign-is-type) value)
-              :do (cl:return (translate-from-foreign value foreign-type))
-            :finally (cl:return value)))))
+      (cond
+        ((%none.check value) (values)) ; treat Py_None as returning nothing
+        (t
+         (loop :for (lisp-name . type-parser) :in *type-map*
+               :for foreign-type := (funcall type-parser reference-type)
+               :when (funcall (slot-value foreign-type 'foreign-is-type) value)
+                 :do (cl:return (translate-from-foreign value foreign-type))
+               :finally (cl:return value)))))))
 
 ;; PyType objects have a structure with something we want.  Unfortunately for
 ;; us, the part we want is a ways into it.
