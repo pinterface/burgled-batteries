@@ -493,13 +493,23 @@ platform and compiler options."
 (define-condition early-python-error (python-error) ()
   (:documentation "The error used when a Python error is fetchable, but a more specific error cannot be determined.  This might occur during loading, when the initial Python condition relationships are being built up."))
 
+;;; Python Exception -> Lisp Condition Mappings
+;; FIXME: We currently fail to translate an exception if an exception is a
+;;        subtype of a known exception, but not /itself/ a known exception.
 (defparameter *exception-map* (make-hash-table :test 'equal)
   "A mapping from Python exceptions to Lisp conditions.")
-(defun register-exception-signaller (python-exception lisp-fn)
-  "Registers the mapping of a Python exception into a Lisp condition.  To be precise, maps to a Lisp function which given a pointer to such a Python exception, signals an appropriate Lisp condition."
-  (setf (gethash python-exception *exception-map*) lisp-fn))
+(defun register-exception-map (python-exception signal-fn initializer-fn)
+  "Registers two functions to a Python exception:
+* SIGNAL-FN signals a Lisp condition for PYTHON-EXCEPTION.
+* INITIALIZER-FN initializes the slots of a condition for later signalling by
+  SIGNAL-FN.  The initializer function is responsible for calling the
+  initializer functions of any Python superclasses."
+  (setf (gethash python-exception *exception-map*) (cons signal-fn initializer-fn)))
 (defun get-exception-signaller (python-exception)
-  (gethash python-exception *exception-map* (lambda (e v b) (error 'early-python-error :type e :value v :trace b))))
+  (or (car (gethash python-exception *exception-map*))
+      (lambda (e v b) (make-condition 'early-python-error :type e :value v :trace b))))
+(defun get-exception-initializer (python-exception)
+  (cdr (gethash python-exception *exception-map*)))
 
 (defun raise-python-exception ()
   (let ((exception (err.occurred*)))
@@ -523,16 +533,19 @@ platform and compiler options."
   (when (object.has-attr-string o string)
     (object.get-attr-string o string)))
 
+(defun %ensure-function (form)
+  (cond
+    ((functionp (first form))
+     (first form))
+    ((member (caar form) '(lambda cl:function))
+     (first form))
+    (t
+     `(lambda ,(first form) ,@(rest form)))))
+
 (defmacro defpyexception (python-name (&rest lisp-superclasses) (&rest slots) &body options)
   (let* ((lisp-condition-name (translate-camel-case python-name))
          (c-name (format nil "PyExc_~A" python-name))
          (lisp-var-name (symbolicate "+" (translate-python-name c-name) "+"))
-         ;; Hrm... we can use __bases__ to automatically fill in the
-         ;; superclasses.  Unfortunately, that requires waiting until after the
-         ;; object stuff is defined to define the errors.  But...the object
-         ;; functions might produce errors.  Well, poo.  Circular dependencies.
-         ;; (Though I guess the object functions shouldn't produce errors
-         ;; operating on error objects.)
          (python-superclasses (remove "object"
                                       (map 'cl:list
                                            (lambda (o) (%object.get-attr-string o "__name__"))
@@ -554,31 +567,28 @@ platform and compiler options."
                                   slots))
          (docstring (or (first (assoc-value options :documentation))
                         (%object.get-attr-string (%foreign-symbol-value c-name :pointer) "__doc__")))
+         (initializer-fn (or (assoc-value options :initializer)
+                             `((c e v b)
+                               (declare (ignorable e b))
+                               ,@(mapcar (lambda (super) `(funcall (get-exception-initializer ,super) c e v b))
+                                         python-superclasses)
+                               ,@(mapcar (lambda (slot attr) `(setf (slot-value c ',(first slot)) (%object.get-attr-string v ,(first attr))))
+                                         slot-specs
+                                         attribute-specs))))
          (signal-fn (or (assoc-value options :converter)
-                        ;; FIXME: While auto-generation of the signal function
-                        ;; is nice, this implementation doesn't work for
-                        ;; subclasses (e.g., OSError subclassing
-                        ;; EnvironmentError won't do the EnvironmentError bits)
                         `((e v b)
-                          (error ',lisp-condition-name
-                                 :type e :value v :trace b
-                                 ,@(mapcan (lambda (attr) `(,(second attr) (%object.get-attr-string v ,(first attr))))
-                                           (remove nil attribute-specs :key #'second)))))))
+                          (let ((condition (make-condition ',lisp-condition-name
+                                                           :type e :value v :trace b)))
+                            (funcall (get-exception-initializer ,python-name) condition e v b)
+                            (error condition))))))
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        ,(unless (boundp lisp-var-name) `(defpyvar ,c-name)) ; Unless is TEMPORARY.
-       ;;(defcvar (,python-name ,lisp-var-name :read-only t) :pointer)
-       ;;(defparameter ,lisp-var-name (pyffi:eval* ,python-name))
        (define-condition ,lisp-condition-name
            (,@(mapcar #'translate-camel-case python-superclasses)
             ,@(or lisp-superclasses '(python-condition)))
          ,slot-specs
          (:documentation ,docstring))
-       (register-exception-signaller ,python-name
-                                     ,(cond
-                                        ((functionp (first signal-fn))
-                                         (car signal-fn))
-                                        ((member (caar signal-fn) '(lambda cl:function))
-                                         (car signal-fn))
-                                        (t
-                                         `(lambda ,(first signal-fn) ,@(rest signal-fn)))))
+       (register-exception-map ,python-name
+                               ,(%ensure-function signal-fn)
+                               ,(%ensure-function initializer-fn))
        ',lisp-condition-name)))
