@@ -613,4 +613,5 @@ platform and compiler options."
        (register-exception-map ,python-name
                                ,(%ensure-function signal-fn)
                                ,(%ensure-function initializer-fn))
+       (export ',lisp-condition-name)
        ',lisp-condition-name)))
