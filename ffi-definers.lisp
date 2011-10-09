@@ -494,8 +494,6 @@ platform and compiler options."
   (:documentation "The error used when a Python error is fetchable, but a more specific error cannot be determined.  This might occur during loading, when the initial Python condition relationships are being built up."))
 
 ;;; Python Exception -> Lisp Condition Mappings
-;; FIXME: We currently fail to translate an exception if an exception is a
-;;        subtype of a known exception, but not /itself/ a known exception.
 (defparameter *exception-map* (make-hash-table :test 'equal)
   "A mapping from Python exceptions to Lisp conditions.")
 (defun register-exception-map (python-exception signal-fn initializer-fn)
@@ -505,9 +503,14 @@ platform and compiler options."
   SIGNAL-FN.  The initializer function is responsible for calling the
   initializer functions of any Python superclasses."
   (setf (gethash python-exception *exception-map*) (cons signal-fn initializer-fn)))
-(defun get-exception-signaller (python-exception)
-  (or (car (gethash python-exception *exception-map*))
-      (lambda (e v b) (make-condition 'early-python-error :type e :value v :trace b))))
+(defun get-exception-signaller (type)
+  (flet ((%getsig (name) (car (gethash name *exception-map*))))
+    (or (%getsig (%object.get-attr-string type "__name__"))
+        (dolist (s (%get-python-inheritance-tree type))
+          (cond
+            ((string= s "object") nil)
+            ((%getsig s) (cl:return (%getsig s)))))
+        (lambda (e v b) (make-condition 'early-python-error :type e :value v :trace b)))))
 (defun get-exception-initializer (python-exception)
   (cdr (gethash python-exception *exception-map*)))
 
@@ -516,7 +519,7 @@ platform and compiler options."
     (when (null-pointer-p exception) (error 'unfetched-python-error))
     (multiple-value-bind (type value traceback)
         (err.fetch-normalized*) ; fetch automatically clears the error
-      (funcall (get-exception-signaller (%object.get-attr-string type "__name__")) type value traceback))))
+      (funcall (get-exception-signaller type) type value traceback))))
 
 (defun err.fetch-normalized* ()
   (multiple-value-bind (& type value traceback)
@@ -529,9 +532,31 @@ platform and compiler options."
 
 (defun %foreign-symbol-value (symbol type)
   (mem-ref (cffi::fs-pointer-or-lose symbol :default) type))
+
 (defun %object.get-attr-string (o string)
   (when (object.has-attr-string o string)
     (object.get-attr-string o string)))
+
+(defun %get-python-superclasses (python-class)
+  (map 'cl:list
+       (lambda (o) (%object.get-attr-string o "__name__"))
+       (%object.get-attr-string python-class "__bases__")))
+
+(defun %get-python-inheritance-tree (type)
+  "Returns a list of class names in the order they should be consulted according to Python's class heirarchy rules."
+  (flet ((supers (type) (coerce (%object.get-attr-string type "__bases__") 'cl:list))
+         (name   (type) (%object.get-attr-string type "__name__")))
+    (let* ((tree (supers type))
+           (tail (last tree)))
+      ;; Naggum trick (dolist would be shorter, but SBCL CDRs too early)
+      ;; see <3247805927894274@naggum.no>
+      (do ((rest tree (cdr rest)))
+          ((endp rest))
+        (setf (cdr tail) (supers (car rest))
+              tail (last tail)))
+      (prog1 (delete-duplicates (mapcar #'name tree) :test #'string= :from-end t)
+        ;; Don't leak references
+        (mapcar #'.dec-ref tree)))))
 
 (defun %ensure-function (form)
   (cond
@@ -545,12 +570,9 @@ platform and compiler options."
 (defmacro defpyexception (python-name (&rest lisp-superclasses) (&rest slots) &body options)
   (let* ((lisp-condition-name (translate-camel-case python-name))
          (c-name (format nil "PyExc_~A" python-name))
+         (c-ptr (%foreign-symbol-value c-name :pointer))
          (lisp-var-name (symbolicate "+" (translate-python-name c-name) "+"))
-         (python-superclasses (remove "object"
-                                      (map 'cl:list
-                                           (lambda (o) (%object.get-attr-string o "__name__"))
-                                           (%object.get-attr-string (%foreign-symbol-value c-name :pointer) "__bases__"))
-                                      :test #'string=))
+         (python-superclasses (remove "object" (%get-python-superclasses c-ptr) :test #'string=))
          (slot-specs (mapcar (lambda (slot-spec)
                                (destructuring-bind (names &rest keys) slot-spec
                                  (multiple-value-bind (lisp-slot python-attribute)
@@ -566,7 +588,7 @@ platform and compiler options."
                                         `(,python-attribute ,(cadr (member :initarg keys))))))
                                   slots))
          (docstring (or (first (assoc-value options :documentation))
-                        (%object.get-attr-string (%foreign-symbol-value c-name :pointer) "__doc__")))
+                        (%object.get-attr-string c-ptr "__doc__")))
          (initializer-fn (or (assoc-value options :initializer)
                              `((c e v b)
                                (declare (ignorable e b))
