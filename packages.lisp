@@ -56,6 +56,7 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
 
 (defpackage #:pyffi
   (:use #:cl #:python.cffi #:alexandria)
+  (:shadowing-import-from #:python.cffi #:arithmetic-error #:type-error)
   (:shadow #:import
            #:eval
            #:apply)
