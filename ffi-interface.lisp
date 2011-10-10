@@ -548,6 +548,8 @@
 ;;;; TODO: Data Marshalling Support
 
 ;;;; Passing Arguments and Building Values
+;;; NOTE: CFFI's type translation facilities mean we probably don't need any of
+;;;       this.  (Users of this library, on the other hand, might.)
 (defpyfun "PyArg_ParseTuple" 0-on-failure ((args tuple) (format :string) &rest))
 #+requires-va_list-support (defpyfun "PyArg_VaParse"    0-on-failure ((args tuple) (format :string) (vargs va_list)))
 #+requires-CHAR*-ARRAY-support (defpyfun "PyArg_ParseTupleAndKeywords"   0-on-failure ((args tuple) (kw dict) (format :string) (keywords (:array :string)) &rest))
