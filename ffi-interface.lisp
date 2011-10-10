@@ -1254,15 +1254,15 @@
 (defpyfun "PyObject_InitVar" var-object ((op var-object) (type type) (size ssize-t))) ; FIXME: is this canerr?
 (defpyfun "PyObject_Del"  :void ((op object)) (:implementation (object.free op)))
 (defpyfun "PyObject_Free" :void ((op object)))
-(defpyfun "Py_InitModule"  object! ((name :string) (methods method-def))
+(defpyfun "Py_InitModule"  (module! :borrowed) ((name :string) (methods method-def))
   (:implementation (.init-module4 name methods (null-pointer) (null-pointer) +api-version+)))
-(defpyfun "Py_InitModule3" object! ((name :string) (methods method-def) (doc :string))
+(defpyfun "Py_InitModule3" (module! :borrowed) ((name :string) (methods method-def) (doc :string))
   (:implementation (.init-module4 name methods doc (null-pointer) +api-version+)))
 (defpyfun* .init-module4
-    (("Py_InitModule4"             object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
-     ("Py_InitModule4_64"          object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
-     ("Py_InitModule4TraceRefs"    object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
-     ("Py_InitModule4TraceRefs_64" object! ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))))
+    (("Py_InitModule4"             (module! :borrowed) ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
+     ("Py_InitModule4_64"          (module! :borrowed) ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
+     ("Py_InitModule4TraceRefs"    (module! :borrowed) ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))
+     ("Py_InitModule4TraceRefs_64" (module! :borrowed) ((name :string) (methods method-def) (doc :string) (self object) (apiver :int)))))
 
 ;;; Type Objects
 ;; NOTE: The defcstruct is above, by (defpytype "PyType" ...)
