@@ -489,35 +489,7 @@
 #+really-a-#define (defpyfun "Py_LeaveRecursiveCall" :void ())
 
 ;;; Exception Variables
-(defpyvar "PyExc_BaseException")
-(defpyvar "PyExc_Exception")
-(defpyvar "PyExc_StandardError")
-(defpyvar "PyExc_ArithmeticError")
-(defpyvar "PyExc_LookupError")
-(defpyvar "PyExc_AssertionError")
-(defpyvar "PyExc_AttributeError")
-(defpyvar "PyExc_EOFError")
-(defpyvar "PyExc_EnvironmentError")
-(defpyvar "PyExc_FloatingPointError")
-(defpyvar "PyExc_IOError")
-(defpyvar "PyExc_ImportError")
-(defpyvar "PyExc_IndexError")
-(defpyvar "PyExc_KeyError")
-(defpyvar "PyExc_KeyboardInterrupt")
-(defpyvar "PyExc_MemoryError")
-(defpyvar "PyExc_NameError")
-(defpyvar "PyExc_NotImplementedError")
-(defpyvar "PyExc_OSError")
-(defpyvar "PyExc_OverflowError")
-(defpyvar "PyExc_ReferenceError")
-(defpyvar "PyExc_RuntimeError")
-(defpyvar "PyExc_SyntaxError")
-(defpyvar "PyExc_SystemError")
-(defpyvar "PyExc_SystemExit")
-(defpyvar "PyExc_TypeError")
-(defpyvar "PyExc_ValueError")
-#+windows (defpyvar "PyExc_WindowsError")
-(defpyvar "PyExc_ZeroDivisionError")
+;; see ffi-conditions.lisp
 
 ;;;; TODO: Operating System Utilities, System Functions, Process Control
 

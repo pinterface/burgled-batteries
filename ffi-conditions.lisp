@@ -1,5 +1,9 @@
 (in-package #:python.cffi)
 
+;; Python must have been initialized for our macroexpansions to work.
+(eval-when (:compile-toplevel :load-toplevel)
+  (.initialize))
+
 (defpyexception "BaseException" (python-condition)
     (("args" :initarg :args)))
 (defpyexception "Exception" () ())
@@ -37,5 +41,8 @@
 (defpyexception "ValueError" () ())
 #+windows (defpyexception "WindowsError" () ())
 (defpyexception "ZeroDivisionError" () ())
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (.finalize))
 
 #+(or) (pyffi::eval "1+")
