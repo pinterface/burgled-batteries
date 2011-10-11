@@ -73,7 +73,6 @@
   (:mixed-arguments      #x0003)
   (:no-arguments         #x0004)
   (:object-method        #x0008)
-  (:old-args             #x0000) ; deprecated, included only for completeness
   (:class-binding        #x0010)
   (:static-binding       #x0020)
   (:coexist              #x0040)

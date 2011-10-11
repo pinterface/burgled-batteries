@@ -75,7 +75,6 @@
   (:mixed-arguments      "METH_KEYWORDS | METH_VARARGS")
   (:no-arguments         "METH_NOARGS")
   (:object-method        "METH_O")
-  (:old-args             "METH_OLDARGS") ; deprecated, included only for completeness
   ;; binding convention
   (:class-binding  "METH_CLASS")
   (:static-binding "METH_STATIC")
