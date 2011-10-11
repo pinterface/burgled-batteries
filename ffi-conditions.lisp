@@ -45,4 +45,4 @@
 (eval-when (:compile-toplevel :load-toplevel)
   (.finalize))
 
-#+(or) (pyffi::eval "1+")
+#+(or) (burgled-batteries:eval "1+")

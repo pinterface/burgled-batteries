@@ -1,4 +1,4 @@
-(in-package #:pyffi)
+(in-package #:burgled-batteries)
 
 (defvar *py-main-module*)
 (defvar *py-main-module-dict*)

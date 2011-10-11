@@ -17,8 +17,8 @@
 ;;        (depending on whether we're 32/64-bit).
 (defcstruct %object
   ;; #ifdef Py_TRACE_REFS
-  #+pyffi.trace-refs (-ob-next object)
-  #+pyffi.trace-refs (-ob-prev object)
+  #+python.trace-refs (-ob-next object)
+  #+python.trace-refs (-ob-prev object)
   ;; #endif
   (refcnt ssize-t)
   (type :pointer))
@@ -84,8 +84,8 @@
 ;; us, the part we want is a ways into it.
 (defcstruct %type
   ;; #ifdef Py_TRACE_REFS
-  #+pyffi.trace-refs (-ob-next object)
-  #+pyffi.trace-refs (-ob-prev object)
+  #+python.trace-refs (-ob-next object)
+  #+python.trace-refs (-ob-prev object)
   ;; #endif
   (refcnt ssize-t)
   (type :pointer) (name :pointer)
