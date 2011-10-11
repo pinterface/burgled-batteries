@@ -247,7 +247,7 @@ pointers by default.  However, you can override that by specifying CFFI-TYPE."
          (lisp-name (or lisp-name (symbolicate "+" (translate-python-name c-name) "+"))))
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        ,(if deref
-            `(defparameter ,lisp-name (foreign-symbol-pointer ,c-name))
+            `(define-symbol-macro ,lisp-name (foreign-symbol-pointer ,c-name :library 'python-library))
             `(defcvar (,c-name ,lisp-name :read-only t) ,cffi-type))
        (export ',lisp-name))))
 
