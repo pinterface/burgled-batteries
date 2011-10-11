@@ -7,9 +7,6 @@
            #:import.add-module
            #:.dec-ref
            #:.inc-ref
-           #:+eval-input+
-           #:+file-input+
-           #:+single-input+
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))

@@ -103,7 +103,7 @@
   ;; as buffer
   (as-buffer :pointer)
   ;; the part we actually care about
-  (flags :long)
+  (flags type-flags)
   ;; docstring
   (doc :pointer)
   ;; mo' functions
@@ -384,21 +384,21 @@
 #+requires-FILE*-support (defpyfun "PyRun_InteractiveLoopFlags" 0-on-success ((fp :file) (filename :string) (flags compiler-flags)))
 
 (defctype .node (can-error :pointer))
-(defpyfun "PyParser_SimpleParseString"              .node ((str :string) (start :int)))
-(defpyfun "PyParser_SimpleParseStringFlags"         .node ((str :string) (start :int) (flags :int)))
-(defpyfun "PyParser_SimpleParseStringFlagsFilename" .node ((str :string) (filename :string) (start :int) (flags :int)))
-#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFile"      .node ((fp :file) (filename :string) (start :int)))
-#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFileFlags" .node ((fp :file) (filename :string) (start :int) (flags :int)))
+(defpyfun "PyParser_SimpleParseString"              .node ((str :string) (start evaluation-context)))
+(defpyfun "PyParser_SimpleParseStringFlags"         .node ((str :string) (start evaluation-context) (flags :int)))
+(defpyfun "PyParser_SimpleParseStringFlagsFilename" .node ((str :string) (filename :string) (start evaluation-context) (flags :int)))
+#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFile"      .node ((fp :file) (filename :string) (start evaluation-context)))
+#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFileFlags" .node ((fp :file) (filename :string) (start evaluation-context) (flags :int)))
 
-(defpyfun "PyRun_String"      object! ((str :string) (start :int) (globals dict) (locals dict)))
-(defpyfun "PyRun_StringFlags" object! ((str :string) (start :int) (globals dict) (locals dict) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_File"        object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict)))
-#+requires-FILE*-support (defpyfun "PyRun_FileEx"      object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict) (closeit :int)))
-#+requires-FILE*-support (defpyfun "PyRun_FileFlags"   object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_FileExFlags" object! ((fp :file) (filename :string) (start :int) (globals dict) (locals dict) (closeit :int) (flags compiler-flags)))
+(defpyfun "PyRun_String"      object! ((str :string) (start evaluation-context) (globals dict) (locals dict)))
+(defpyfun "PyRun_StringFlags" object! ((str :string) (start evaluation-context) (globals dict) (locals dict) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_File"        object! ((fp :file) (filename :string) (start evaluation-context) (globals dict) (locals dict)))
+#+requires-FILE*-support (defpyfun "PyRun_FileEx"      object! ((fp :file) (filename :string) (start evaluation-context) (globals dict) (locals dict) (closeit :int)))
+#+requires-FILE*-support (defpyfun "PyRun_FileFlags"   object! ((fp :file) (filename :string) (start evaluation-context) (globals dict) (locals dict) (flags compiler-flags)))
+#+requires-FILE*-support (defpyfun "PyRun_FileExFlags" object! ((fp :file) (filename :string) (start evaluation-context) (globals dict) (locals dict) (closeit :int) (flags compiler-flags)))
 
-(defpyfun "Py_CompileString"      code! ((str :string) (filename :string) (start :int)))
-(defpyfun "Py_CompileStringFlags" code! ((str :string) (filename :string) (start :int) (flags compiler-flags)))
+(defpyfun "Py_CompileString"      code! ((str :string) (filename :string) (start evaluation-context)))
+(defpyfun "Py_CompileStringFlags" code! ((str :string) (filename :string) (start evaluation-context) (flags compiler-flags)))
 (defpyfun "PyEval_EvalCode"    object! ((co code) (globals dict) (locals dict)))
 #+requires-POINTER-ARRAY-support (defpyfun "PyEval_EvalCodeEx"  object! ((co code) (globals dict) (locals dict) (args (:array object)) (argcount :int) (kws (:array object)) (kwcount :int) (defs (:array object)) (defcount :int) (closure object)))
 (defpyfun "PyEval_EvalFrame"   object! ((f frame-object)))
@@ -698,7 +698,7 @@
 (defpyfun "PyIter_Check" :boolean ((o object))
   (:implementation
    (let ((otype (foreign-slot-value o '%object 'type)))
-     (if (and (type.has-feature otype +tpflags.have-iter+)
+     (if (and (type.has-feature otype :have-iter)
               (not (null-pointer-p (foreign-slot-value o '%type 'iternext))))
          1 0))))
 (defpyfun "PyIter_Next"  object?  ((o object)))
@@ -711,10 +711,10 @@
 ;;; Type Objects
 (defpyfun "PyType_ClearCache" :uint ())
 (defpyfun "PyType_Modified" :void ((type type)))
-(defpyfun "PyType_HasFeature" :boolean ((o object) (feature :int))
-  (:implementation (logand feature (foreign-slot-value o '%type 'flags))))
+(defpyfun "PyType_HasFeature" :boolean ((o object) (feature type-flags))
+  (:implementation (logand feature (foreign-bitfield-value 'type-flags (foreign-slot-value o '%type 'flags)))))
 (defpyfun "PyType_IS_GC"      :boolean ((o object))
-  (:implementation (if (type.has-feature o +tpflags.have-gc+) 1 0)))
+  (:implementation (if (type.has-feature o :have-gc) 1 0)))
 (defpyfun "PyType_IsSubtype"  :boolean ((a type) (b type)))
 (defpyfun "PyType_GenericAlloc" object! ((type type) (nitems ssize-t)))
 (defpyfun "PyType_GenericNew"   object! ((type type) (args object) (kwds object)))
@@ -1205,11 +1205,11 @@
 (defcstruct method-def
   (name :string)
   (meth c-function)
-  (flags :int)
+  (flags method-convention-flags)
   (doc :string))
 (defcstruct member-def
   (name :string)
-  (type :int)
+  (type member-type)
   (offset ssize-t)
   (flags :int)
   (doc :string))

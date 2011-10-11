@@ -7,7 +7,7 @@
   (.initialize)
   (setf *py-main-module* (import.add-module "__main__"))
   (setf *py-main-module-dict* (module.get-dict* *py-main-module*))
-  (let ((tmp (run.string* "from __builtin__ import *" +single-input+
+  (let ((tmp (run.string* "from __builtin__ import *" :statement
                           *py-main-module-dict* (cffi:null-pointer))))
     (.dec-ref tmp)))
 
@@ -25,10 +25,10 @@
 (defun eval (expression)
   "Evaluates a Python expression and returns a Lisp object (or a pointer, if no
 method of translation is known)."
-  (run.string expression +eval-input+ *py-main-module-dict* *py-main-module-dict*))
+  (run.string expression :expression *py-main-module-dict* *py-main-module-dict*))
 (defun eval* (expression)
   "Like EVAL, but always returns a pointer to a Python object."
-  (run.string* expression +eval-input+ *py-main-module-dict* *py-main-module-dict*))
+  (run.string* expression :expression *py-main-module-dict* *py-main-module-dict*))
 
 (defun apply (func &rest args)
   (object.call-object func (cl:apply #'vector args)))

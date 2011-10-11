@@ -31,10 +31,10 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
          ,@body)
        (set-callback-type ',name
                           ,(cond
-                             ((zerop (length args)) +meth.noargs+)
-                             ((eql '&key (first args)) +meth.keywords+)
-                             ((find '&key args) (logior +meth.keywords+ +meth.varargs+))
-                             (t +meth.varargs+))))))
+                             ((zerop (length args))    :no-arguments)
+                             ((eql '&key (first args)) :keyword-arguments)
+                             ((find '&key args)        :mixed-arguments)
+                             (t                        :positional-arguments))))))
 
 (defpycallback test-no-arguments bool ()
   (format t "arg: self=~A args=~A~%" self args)
