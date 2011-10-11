@@ -31,6 +31,7 @@ future.)
     :serial t
     :components
     ((:file "packages")
+     #-pyffi.guess-not-grovel (:file "grovel-bitfields")
      ;; FIXME: auto-detect location of Python include directory (or at least make it configurable)
      #-pyffi.guess-not-grovel (grovel-file "grovel" :cc-flags ("-I/usr/include/python2.6"))
      #+pyffi.guess-not-grovel (:file "grovel-guess")
