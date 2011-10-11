@@ -249,7 +249,6 @@ pointers by default.  However, you can override that by specifying CFFI-TYPE."
        ,(if deref
             `(defparameter ,lisp-name (foreign-symbol-pointer ,c-name))
             `(defcvar (,c-name ,lisp-name :read-only t) ,cffi-type))
-       #+pyffi.debug (format t "Var ~A is ~A~%" ,c-name ,lisp-name)
        (export ',lisp-name))))
 
 ;;; Interface for Defining Python Types
@@ -299,10 +298,8 @@ specified).
         `(eval-when (:compile-toplevel :load-toplevel :execute)
            (defparameter ,lisp-var (foreign-symbol-pointer ,c-var))
            (defun ,c-type-check       (o)
-             #+pyffi.debug (format t "In ~A: ~A~%" ',c-type-check o)
              (object.type-check o ,lisp-var))
            (defun ,c-type-check-exact (o)
-             #+pyffi.debug (format t "In ~A: ~A~%" ',c-type-check-exact o)
              (%object.type-check-exact o ,lisp-var))
            (define-parse-method ,lisp-name (&rest options)
              (let ((reference-type (or (find :borrowed options) (find :new options) :new))
@@ -310,19 +307,16 @@ specified).
                (make-instance 'foreign-python-type
                               :actual-type :pointer
                               :to   #'(lambda (,to-val ,to-type)
-                                        (declare (ignorable ,to-type) (optimize (debug 3)))
-                                        #+pyffi.debug (format t "In translate-to for ~A: ~A, ~A~%" ',lisp-name ,to-val ,to-type)
+                                        (declare (ignorable ,to-type))
                                         ,@to-body)
                               :from #'(lambda (,from-val ,from-type)
-                                        (declare (ignorable ,to-type) (optimize (debug 3)))
-                                        #+pyffi.debug (format t "In translate-from for ~A: ~A, ~A~%" ',lisp-name ,from-val ,from-type)
+                                        (declare (ignorable ,to-type))
                                         ,@from-body)
                               :borrowedp (ecase reference-type (:new  nil) (:borrowed t))
                               :stolenp   (ecase argument-type  (:stolen t) (:copied nil))
                               :check-ptr  #',c-type-check
                               :check-lisp #'(lambda (v)
                                               (declare (ignorable v))
-                                              #+pyffi.debug (format t "In check-lisp for ~A: ~A~%" ',lisp-name v)
                                               ,(when lisp-type `(typep v ',lisp-type))))))
            (define-parse-method ,can-error-type (&rest options)
              (parse-type `(can-error (,',lisp-name ,@options))))
@@ -438,14 +432,12 @@ platform and compiler options."
 
 (defmethod free-translated-object (value (type foreign-python-type) decrefp)
   (declare (ignore type))
-  #+pyffi.debug (format t "In free-translated-object: ~A, ~A, ~A~%" value decrefp (%object.refcnt value))
   (when decrefp (.dec-ref value)))
 
 (defmethod translate-from-foreign (value (type foreign-python-type))
   (unwind-protect
        (funcall (slot-value type 'translate-from) value type)
     (progn
-      #+pyffi.debug (format t "In translate-from-foreign: ~A, ~A~%" value (%object.refcnt value))
       (unless (borrowed-reference-p type)
         (.dec-ref value)))))
 

@@ -1,7 +1,5 @@
 (in-package #:python.cffi)
 
-(declaim (optimize (debug 3)))
-
 ;;;; FFI Library
 ;; Much of what we do below requires it be loaded during macroexpansion time.
 (eval-when (:compile-toplevel :load-toplevel :execute)
