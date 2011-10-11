@@ -8,7 +8,7 @@
 (ctype size-t  "size_t")
 
 ;; Evaluation Context Flags
-(constantenum evaluation-context
+(constantenum parser-context
   ((:expression "Py_eval_input"))
   ((:statement  "Py_single_input"))
   ((:file       "Py_file_input")))

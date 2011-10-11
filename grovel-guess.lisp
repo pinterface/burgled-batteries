@@ -11,7 +11,7 @@
                           (error "Unable to guess size-t.")))
 (cl:defconstant size-of-size-t (cffi:foreign-type-size 'size-t))
 
-(cffi:defcenum (evaluation-context)
+(cffi:defcenum (parser-context)
   (:expression 258)
   (:statement  256)
   (:file       257))
