@@ -351,12 +351,18 @@ platform and compiler options."
 ;;        and not bother with the return values of functions.
 (define-foreign-type can-error ()
   ((error-value-p :initarg :error-value-p :accessor error-value-p)
+   (error-values   :initarg :error-values   :accessor error-values   :initform nil)
+   (success-values :initarg :success-values :accessor success-values :initform nil)
+   (error-checker  :initarg :error-checker  :accessor error-checker)
    (fetchablep :initarg :fetchablep :reader error-is-fetchable-p)))
 (define-parse-method can-error (actual-type &key success failure (fetchablep t))
   (let ((checkerr (get-error-checker (first (ensure-list actual-type)))))
     (make-instance 'can-error
                    :actual-type actual-type
                    :fetchablep fetchablep
+                   :success-values (ensure-list success)
+                   :error-values (ensure-list failure)
+                   :error-checker checkerr
                    :error-value-p (cond
                                     (success (complement (rcurry #'member (ensure-list success) :test #'equal)))
                                     (failure (rcurry #'member (ensure-list failure) :test #'equal))
@@ -392,6 +398,31 @@ platform and compiler options."
          (error 'unfetched-python-error :value value :type type))
         (t (raise-python-exception)))
       (translate-from-foreign value (cffi::actual-type type))))
+
+;; The duplication here is a bit unfortunate, but it knocks out rather a lot of
+;; calls to translate-from-foreign so I'll allow it.
+(defmethod expand-from-foreign (value (type can-error))
+  (once-only ((value value))
+    (let ((expand-actual (expand-from-foreign value (cffi::actual-type type)))
+          (unfetchable-error `(error 'unfetchable-python-error :value ,value :type ,type)))
+      (cond
+        ((error-is-fetchable-p type)
+         `(if (%error-occurred-p)
+              (raise-python-exception)
+              ,expand-actual))
+        ((success-values type)
+         `(if (member ,value ',(success-values type) :test #'equal)
+              ,expand-actual
+              ,unfetchable-error))
+        ((error-values type)
+         `(if (member ,value ',(error-values type) :test #'equal)
+              ,unfetchable-error
+              ,expand-actual))
+        ((error-checker type)
+         `(if (funcall ,(error-checker type) ,value)
+              ,unfetchable-error
+              ,expand-actual))
+        (t expand-actual)))))
 
 #+(or) ;; no translate-to-foreign
 (defmethod free-translated-object (value (type can-error) param)
