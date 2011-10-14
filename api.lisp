@@ -30,6 +30,32 @@ method of translation is known)."
   "Like EVAL, but always returns a pointer to a Python object."
   (run.string* expression :expression *py-main-module-dict* *py-main-module-dict*))
 
+(defgeneric run* (thing)
+  (:documentation "Runs some code.  When given a string, tries to interpret that string as if it were Python code.  Given a pathname, runs that file.  Returns a pointer."))
+
+(defmethod run* ((code string))
+  (let ((code-ptr
+          ;; Python's eval doesn't return a value for statements, but only for
+          ;; expressions.  So we first attempt to parse code as an expression
+          ;; (allowing us to get a value), and only if that fails do we fall
+          ;; back to a statement (for which no value will be returned).
+          (handler-case
+              (.compile-string code "<string>" :expression)
+            (syntax-error () (.compile-string code "<string>" :statement)))))
+    (eval.eval-code* code-ptr *py-main-module-dict* *py-main-module-dict*)))
+
+(defmethod run* ((file pathname))
+  (error "Sorry, running a Python file is not yet supported."))
+
+;; Rather than duplicate all the defmethods of RUN*, we just call RUN* here and
+;; translate the value ourselves.
+(defun run (thing)
+  "Like RUN*, but makes an effort to return a Lispy value."
+  (let* ((val (run* thing))
+         (ret (multiple-value-list (cffi:convert-from-foreign val '(python.cffi::can-error python.cffi::object)))))
+    (unless (cffi:pointerp (first ret)) (.dec-ref val))
+    (values-list ret)))
+
 (defun apply (func &rest args)
   (object.call-object func (cl:apply #'vector args)))
 
