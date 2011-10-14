@@ -365,6 +365,12 @@
 ;;;; High-level Interpreter Functions
 (defcstruct compiler-flags (flags :int))
 #+requires-CHAR*-ARRAY-support (defpyfun "Py_Main" :int ((argc :int) (argv (:array :string)))) ;canerr
+;; NOTE: To support FILE*, we'll need to either get the FILE* for an open stream
+;;       (if the lisp provides access to it), or get the FD and call fdopen(fd,
+;;       mode).  If the Lisp doesn't provide access to the FILE pointer or
+;;       file-descriptor, then we're out of luck.  It does, however, appear that
+;;       fdopen and the other C f* functions are available for use via
+;;       cffi:defcfun without us having to create wrappers, though.
 #+requires-FILE*-support (defpyfun "PyRun_AnyFile"        0-on-success/no-fetch ((fp :file) (filename :string)))
 #+requires-FILE*-support (defpyfun "PyRun_AnyFileFlags"   0-on-success/no-fetch ((fp :file) (filename :string) (flags compiler-flags)))
 #+requires-FILE*-support (defpyfun "PyRun_AnyFileEx"      0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int)))
