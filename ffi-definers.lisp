@@ -350,8 +350,7 @@ platform and compiler options."
 ;;        fetchable at all), it might make more sense just to always check it
 ;;        and not bother with the return values of functions.
 (define-foreign-type can-error ()
-  ((error-value-p :initarg :error-value-p :accessor error-value-p)
-   (error-values   :initarg :error-values   :accessor error-values   :initform nil)
+  ((error-values   :initarg :error-values   :accessor error-values   :initform nil)
    (success-values :initarg :success-values :accessor success-values :initform nil)
    (error-checker  :initarg :error-checker  :accessor error-checker)
    (fetchablep :initarg :fetchablep :reader error-is-fetchable-p)))
@@ -362,20 +361,10 @@ platform and compiler options."
                    :fetchablep fetchablep
                    :success-values (ensure-list success)
                    :error-values (ensure-list failure)
-                   :error-checker checkerr
-                   :error-value-p (cond
-                                    (success (complement (rcurry #'member (ensure-list success) :test #'equal)))
-                                    (failure (rcurry #'member (ensure-list failure) :test #'equal))
-                                    (checkerr checkerr)
-                                    (fetchablep (lambda (x) (declare (ignore x)) (%error-occurred-p)))
-                                    (t (constantly nil))))))
+                   :error-checker checkerr)))
 
 (define-parse-method soft-error (actual-type &key success failure)
-  (let* ((type (parse-type `(can-error ,actual-type :success ,success :failure ,failure :fetchablep t)))
-         (ev (error-value-p type)))
-    (setf (error-value-p type)
-          (lambda (v) (and (funcall ev v) (%error-occurred-p))))
-    type))
+  (parse-type `(can-error ,actual-type :success ,success :failure ,failure :fetchablep t)))
 
 (defmethod print-object ((o can-error) s)
   (print-unreadable-object (o s :type t)
@@ -386,21 +375,8 @@ platform and compiler options."
 ;; we'd want a method on #'expand-to-foreign-dyn so we can check for errors
 ;; after calling into C.
 
-(defmethod translate-from-foreign (value (type can-error))
-  ;; FIXME: It would probably make more sense just to check #'err.occurred in
-  ;;        all cases where the error is fetchable and ignore the return value
-  ;;        entirely.
-  (if (funcall (error-value-p type) value)
-      (cond
-        ((not (error-is-fetchable-p type))
-         (error 'unfetchable-python-error :value value :type type))
-        ((null-pointer-p (err.occurred*))
-         (error 'unfetched-python-error :value value :type type))
-        (t (raise-python-exception)))
-      (translate-from-foreign value (cffi::actual-type type))))
-
-;; The duplication here is a bit unfortunate, but it knocks out rather a lot of
-;; calls to translate-from-foreign so I'll allow it.
+;; We don't define #'translate-from-foreign because #'expand-from-foreign takes
+;; precedence, and they'd essentially be duplicates of each other.
 (defmethod expand-from-foreign (value (type can-error))
   (once-only ((value value))
     (let ((expand-actual (expand-from-foreign value (cffi::actual-type type)))
