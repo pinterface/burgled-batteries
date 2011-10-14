@@ -361,6 +361,7 @@ platform and compiler options."
                                     (success (complement (rcurry #'member (ensure-list success) :test #'equal)))
                                     (failure (rcurry #'member (ensure-list failure) :test #'equal))
                                     (checkerr checkerr)
+                                    (fetchablep (lambda (x) (declare (ignore x)) (%error-occurred-p)))
                                     (t (constantly nil))))))
 
 (define-parse-method soft-error (actual-type &key success failure)
