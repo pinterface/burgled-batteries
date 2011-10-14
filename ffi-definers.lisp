@@ -381,6 +381,9 @@ platform and compiler options."
 ;; after calling into C.
 
 (defmethod translate-from-foreign (value (type can-error))
+  ;; FIXME: It would probably make more sense just to check #'err.occurred in
+  ;;        all cases where the error is fetchable and ignore the return value
+  ;;        entirely.
   (if (funcall (error-value-p type) value)
       (cond
         ((not (error-is-fetchable-p type))
