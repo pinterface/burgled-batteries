@@ -195,29 +195,28 @@
   (:from (value type) …))
 
 (defpytype "PyTuple"
-  ;; CAUTION: tuple of characters may get confused with strings
-  (:type (and vector (not cl:string)))
-  (:to (value type)
-    (let* ((len (length value))
-           (tup (tuple.new* len)))
-      (dotimes (i len tup)
-        (tuple.set-item tup i (svref value i)))))
-  (:from (value type)
-    (let* ((len (tuple.size value))
-           (tup (make-array len)))
-      (dotimes (i len tup)
-        (setf (svref tup i) (tuple.get-item value i))))))
-
-(defpytype "PyList"
   (:type cl:list)
   (:to (value type)
-    (loop :with list = (list.new* (length value))
-          :for item :in value :and i :from 0
-          :do (list.set-item list i item)
-          :finally (cl:return list)))
+    (let* ((len (length value))
+           (tup (tuple.new* len))
+           (i 0))
+      (dolist (e value)
+        (tuple.set-item tup i e)
+        (incf i))))
   (:from (value type)
-    (loop :for i :from 0 :to (1- (list.size value))
-          :collect (list.get-item value i))))
+    (loop :for i :from 0 :to (1- (tuple.size value))
+          :collect (tuple.get-item value i))))
+
+(defpytype "PyList"
+  (:type (and vector (not cl:string)))
+  (:to (value type)
+    (let ((list (list.new* (length value))))
+      (dotimes (i (length value) list)
+        (list.set-item list i (aref value i)))))
+  (:from (value type)
+    (let ((array (make-array (list.size value) :adjustable t :fill-pointer t)))
+      (dotimes (i (list.size value) array)
+        (setf (aref array i) (list.get-item value i))))))
 
 ;;; Mapping Types
 (defpytype "PyDict"
