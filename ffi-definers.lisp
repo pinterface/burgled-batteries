@@ -291,7 +291,7 @@ specified).
          (c-type-check       (translate-python-name (format nil "~A_Check" c-name)))
          (c-type-check-exact (translate-python-name (format nil "~A_CheckExact" c-name)))
          (to   (or (assoc-value options :to)   '((value type) value)))
-         (from (or (assoc-value options :from) '((value type) value)))
+         (from (or (assoc-value options :from) '((value type) (unless (borrowed-reference-p type) (.inc-ref value)) value)))
          (errorp (car (assoc-value options :errorp))))
     (destructuring-bind ((to-val to-type) &rest to-body) to
       (destructuring-bind ((from-val from-type) &rest from-body) from
