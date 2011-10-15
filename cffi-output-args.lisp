@@ -56,7 +56,7 @@
     (place (first arg))
     (t (second arg))))
 
-#+(or)
+#+(or) ; Just an example
 (defmacro define-c-function (name return-type args)
   (multiple-value-bind (lisp-name foreign-name options)
       (cffi::parse-name-and-options name)
@@ -64,7 +64,6 @@
            (args (normalize-args args))
            (accum (gensym "ACCUM"))
            (retval (gensym "RETVAL"))
-           #+(or) (ptr-name (symbolicate lisp-name "*"))
            (lisp-args (mapcar #'first (remove-if (rcurry #'typep 'return) args :key #'fourth))))
       `(progn
          (defcfun (,foreign-name ,internal-lisp-name ,@options)
@@ -73,18 +72,9 @@
          (defun ,lisp-name ,lisp-args
            (let ((,accum (cl:list))
                  (,retval '#:you-should-never-see-this-value))
-             ,@(%wrap-arg args ;(remove-if-not (rcurry #'typep 'output-arg) args :key #'fourth)
+             ,@(%wrap-arg args
                           `((setf ,retval (,internal-lisp-name ,@(mapcar #'%choose-symbol args))))
                           accum)
-             (push ,retval ,accum)
-             (values-list ,accum)))
-         #+(or)
-         (defun ,ptr-name ,lisp-args
-           (let ((,accum (cl:list))
-                 (,retval '#:you-should-never-see-this-value))
-             ,(%wrap-arg (remove-if-not (rcurry #'typep 'output-arg) args :key #'third)
-                         `(setf ,retval (,internal-lisp-name ,@(mapcar #'first args)))
-                         accum)
              (push ,retval ,accum)
              (values-list ,accum)))))))
 
