@@ -290,12 +290,14 @@ specified).
          (lisp-type (car (assoc-value options :type)))
          (c-type-check       (translate-python-name (format nil "~A_Check" c-name)))
          (c-type-check-exact (translate-python-name (format nil "~A_CheckExact" c-name)))
+         (foreign-type-class (symbolicate '#:foreign-python- lisp-name '#:-type))
          (to   (or (assoc-value options :to)   '((value type) value)))
          (from (or (assoc-value options :from) '((value type) (unless (borrowed-reference-p type) (.inc-ref value)) value)))
          (errorp (car (assoc-value options :errorp))))
     (destructuring-bind ((to-val to-type) &rest to-body) to
       (destructuring-bind ((from-val from-type) &rest from-body) from
         `(eval-when (:compile-toplevel :load-toplevel :execute)
+           (define-foreign-type ,foreign-type-class (foreign-python-type) ())
            (defparameter ,lisp-var (foreign-symbol-pointer ,c-var))
            (defun ,c-type-check       (o)
              (object.type-check o ,lisp-var))
@@ -304,24 +306,30 @@ specified).
            (define-parse-method ,lisp-name (&rest options)
              (let ((reference-type (or (find :borrowed options) (find :new options) :new))
                    (argument-type (or (find :stolen options) (find :copied options) :copied)))
-               (make-instance 'foreign-python-type
+               (make-instance ',foreign-type-class
                               :actual-type :pointer
-                              :to   #'(lambda (,to-val ,to-type)
-                                        (declare (ignorable ,to-type))
-                                        ,@to-body)
-                              :from #'(lambda (,from-val ,from-type)
-                                        (declare (ignorable ,to-type))
-                                        ,@from-body)
                               :borrowedp (ecase reference-type (:new  nil) (:borrowed t))
-                              :stolenp   (ecase argument-type  (:stolen t) (:copied nil))
-                              :check-ptr  #',c-type-check
-                              :check-lisp #'(lambda (v)
-                                              (declare (ignorable v))
-                                              ,(when lisp-type `(typep v ',lisp-type))))))
+                              :stolenp   (ecase argument-type  (:stolen t) (:copied nil)))))
            (define-parse-method ,can-error-type (&rest options)
              (parse-type `(can-error (,',lisp-name ,@options))))
            (define-parse-method ,soft-error-type (&rest options)
              (parse-type `(soft-error (,',lisp-name ,@options))))
+           (defmethod translate-to-foreign (,to-val (,to-type ,foreign-type-class))
+             (let ((reference-type (if (borrowed-reference-p ,to-type) :borrowed :new))
+                   (argument-type  (if (stolen-reference-p   ,to-type) :stolen   :copied)))
+               (declare (ignorable reference-type argument-type))
+               ,@to-body))
+           (defmethod translate-from-foreign (,from-val (,from-type ,foreign-type-class))
+             (let ((reference-type (if (borrowed-reference-p ,from-type) :borrowed :new))
+                   (argument-type  (if (stolen-reference-p   ,from-type) :stolen   :copied)))
+               (declare (ignorable reference-type argument-type))
+               ,@from-body))
+           (defmethod foreign-is-convertable-to-type-p (value (type ,foreign-type-class))
+             (declare (ignore type))
+             (,c-type-check value))
+           (defmethod lisp-is-convertable-to-foreign-p (value (type ,foreign-type-class))
+             (declare (ignorable value) (ignore type))
+             ,(when lisp-type `(typep value ',lisp-type)))
            (register-python-type ',lisp-name (find-type-parser ',lisp-name))
            ,@(when errorp `((register-error-checker ',lisp-name ,errorp))))))))
 
@@ -421,11 +429,7 @@ platform and compiler options."
 ;;;; Translation Helpers for Python Types
 (define-foreign-type foreign-python-type ()
   ((borrowedp :initarg :borrowedp :reader borrowed-reference-p)
-   (stolenp   :initarg :stolenp   :reader stolen-reference-p)
-   (translate-to   :initarg :to)
-   (translate-from :initarg :from)
-   (foreign-is-type :initarg :check-ptr)
-   (lisp-is-type    :initarg :check-lisp)))
+   (stolenp   :initarg :stolenp   :reader stolen-reference-p)))
 
 (defmethod print-object ((o foreign-python-type) s)
   (print-unreadable-object (o s :type t)
@@ -435,22 +439,32 @@ platform and compiler options."
             (if (stolen-reference-p o) :stolen :copied)
             (cffi::actual-type o))))
 
-(defmethod translate-to-foreign (value (type foreign-python-type))
+(defgeneric foreign-is-convertable-to-type-p (value type)
+  (:documentation "Returns true if the foreign-type of VALUE has a known conversion under TYPE.")
+  (:method (value (type foreign-python-type))
+    (declare (ignore value type))
+    nil))
+(defgeneric lisp-is-convertable-to-foreign-p (value type)
+  (:documentation "Returns true if the lisp value VALUE has a known conversion to the foreign-type represented by TYPE.")
+  (:method (value (type foreign-python-type))
+    (declare (ignore value type))
+    nil))
+
+(defmethod translate-to-foreign :around (value (type foreign-python-type))
   (cond
     ((pointerp value) (values value nil)) ; assume already foreign
-    (t (values (funcall (slot-value type 'translate-to) value type)
+    (t (values (call-next-method)
                (not (stolen-reference-p type))))))
 
 (defmethod free-translated-object (value (type foreign-python-type) decrefp)
   (declare (ignore type))
   (when decrefp (.dec-ref value)))
 
-(defmethod translate-from-foreign (value (type foreign-python-type))
+(defmethod translate-from-foreign :around (value (type foreign-python-type))
   (unwind-protect
-       (funcall (slot-value type 'translate-from) value type)
-    (progn
-      (unless (borrowed-reference-p type)
-        (.dec-ref value)))))
+       (call-next-method)
+    (unless (borrowed-reference-p type)
+      (.dec-ref value))))
 
 ;;;; Translation for Octet Arrays
 (define-foreign-type octet-array () ())
