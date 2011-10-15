@@ -26,8 +26,10 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
         (dict-type (if (eql return-type :pointer) :pointer '(dict   :borrowed))))
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        (defcallback ,name ,return-type
-           ,(cond ((find '&key args) `((self ,self-type) (args ,args-type) (dict ,dict-type)))
-                  (t `((self ,self-type) (args ,args-type))))
+           ,@(cond ((find '&key args) `(((self ,self-type) (args ,args-type) (dict ,dict-type))
+                                        (declare (ignorable self args dict))))
+                   (t `(((self ,self-type) (args ,args-type))
+                        (declare (ignorable self args)))))
          ,@body)
        (set-callback-type ',name
                           ,(cond
