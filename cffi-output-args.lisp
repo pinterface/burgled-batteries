@@ -21,8 +21,7 @@
                         (%wrap-arg (rest arg-list) body accum)
                         body))
            (real-type (ignore-errors (real-type parsed-type)))
-           (canonical-type (when real-type (cffi::canonicalize real-type)))
-           #+(or) (translate-out `(push ,(expand-from-foreign `(mem-ref ,var ,canonical-type) real-type) ,accum)))
+           (canonical-type (when real-type (cffi::canonicalize real-type))))
       (typecase parsed-type
         (return `((with-foreign-object (,var :pointer)
                     ,@to-wrap
