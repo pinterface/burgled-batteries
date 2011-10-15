@@ -411,7 +411,7 @@ platform and compiler options."
   (register-error-checker x (lambda (v) (declare (ignore v)) (%error-occurred-p))))
 (register-error-checker :double (curry #'= -1.0))
 (defctype 0-on-success          (can-error :int :success 0))
-(defctype 0-on-success/no-fetch (can-error :int :success 0 :fetchablep nil)) ; May not be necessary
+(defctype 0-on-success/no-fetch (can-error :int :success 0 :fetchablep nil))
 (defctype 0-on-failure          (can-error :int :failure 0))
 (defctype boolean! (can-error :boolean :success (0 1)))
 (defctype ssize-t! (can-error ssize-t))
