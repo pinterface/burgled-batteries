@@ -61,7 +61,7 @@
   (:errorp #'null-pointer-p)
   (:to (value type)
     (loop :for (lisp-name . type-parser) :in *type-map*
-          :for foreign-type := (funcall type-parser reference-type)
+          :for foreign-type := (funcall type-parser reference-type argument-type)
           :when (lisp-is-convertable-to-foreign-p value foreign-type)
             :do (cl:return (translate-to-foreign value foreign-type))
           :finally (cl:return value)))
@@ -75,7 +75,7 @@
         ((%none.check value) (values)) ; treat Py_None as returning nothing
         (t
          (loop :for (lisp-name . type-parser) :in *type-map*
-               :for foreign-type := (funcall type-parser reference-type)
+               :for foreign-type := (funcall type-parser reference-type argument-type)
                :when (foreign-is-convertable-to-type-p value foreign-type)
                  :do (cl:return (translate-from-foreign value foreign-type))
                :finally (cl:return value)))))))
