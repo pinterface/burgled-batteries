@@ -13,29 +13,30 @@
 (define-parse-method place (real-type)
   (make-instance 'place :actual-type :pointer :real-type (parse-type real-type)))
 
-(defun %wrap-arg (arg-list body accum)
-  (destructuring-bind (val var real-type parsed-type)
-      (first arg-list)
-    (declare (ignore real-type))
-    (let* ((to-wrap (if (rest arg-list)
-                        (%wrap-arg (rest arg-list) body accum)
-                        body))
-           (real-type (ignore-errors (real-type parsed-type)))
-           (canonical-type (when real-type (cffi::canonicalize real-type))))
-      (typecase parsed-type
-        (return `((with-foreign-object (,var :pointer)
-                    ,@to-wrap
-                    (push ,(expand-from-foreign `(mem-ref ,var ,canonical-type) real-type) ,accum))))
-        (place `(,(expand-to-foreign-dyn val var
-                                         `((with-foreign-object (,val :pointer)
-                                             (setf (mem-ref ,val ,canonical-type) ,var)
-                                             ,@to-wrap
-                                             (push ,(expand-from-foreign `(mem-ref ,val ,canonical-type) real-type) ,accum)))
-                                         real-type)))
-        (t `(,(expand-to-foreign-dyn val var to-wrap parsed-type)))))))
+(defgeneric include-in-argument-list-p (foreign-type)
+  (:documentation "Returns true if the given foreign-type should be included in the argument list of a function, false if it should be excluded.")
+  (:method ((foreign-type return)) nil)
+  (:method ((foreign-type t)) t))
+
+(defvar *values-accumulator*)
+
+(defmethod expand-to-foreign-dyn (value var body (type output-arg))
+  (let* ((real-type (real-type type))
+         (canonical-type (cffi::canonicalize real-type)))
+    `(with-foreign-object (,var :pointer)
+       ,@body
+       (push ,(expand-from-foreign `(mem-ref ,var ,canonical-type) real-type) ,*values-accumulator*))))
+
+(defmethod expand-to-foreign-dyn (value var body (type place))
+  (let* ((real-type (real-type type))
+         (canonical-type (cffi::canonicalize real-type)))
+    (expand-to-foreign-dyn
+     value var
+     `(,(call-next-method var value `((setf (mem-ref ,value ,canonical-type) ,var) ,@body) type))
+     real-type)))
 
 (defun normalize-arg (arg)
-  "Returns (list var real-type parsed-type)"
+  "Returns (list var gensym actual-type parsed-type)"
   (cond
     ((eq arg '&rest) arg)
     ((listp arg)
@@ -46,9 +47,6 @@
            (t (cl:list var (gensym (symbol-name var)) type parsed-type))))))
     (t (error "oh noez!"))))
 
-(defun normalize-args (args)
-  (mapcar #'normalize-arg args))
-
 (defun %choose-symbol (arg)
   (typecase (fourth arg)
     (return (second arg))
@@ -56,25 +54,26 @@
     (t (second arg))))
 
 #+(or) ; Just an example
-(defmacro define-c-function (name return-type args)
+(defmacro defcfun* (name return-type args)
   (multiple-value-bind (lisp-name foreign-name options)
       (cffi::parse-name-and-options name)
     (let* ((internal-lisp-name (symbolicate "%" lisp-name))
-           (args (normalize-args args))
-           (accum (gensym "ACCUM"))
+           (args (mapcar #'normalize-arg args))
+           (*values-accumulator* (gensym "ACCUM"))
            (retval (gensym "RETVAL"))
-           (lisp-args (mapcar #'first (remove-if (rcurry #'typep 'return) args :key #'fourth))))
+           (lisp-args (mapcar #'first (remove-if-not #'include-in-argument-list-p args :key #'fourth))))
       `(progn
          (defcfun (,foreign-name ,internal-lisp-name ,@options)
              ,return-type
            ,@(mapcar (lambda (arg) (cl:list (first arg) (third arg))) args))
          (defun ,lisp-name ,lisp-args
-           (let ((,accum (cl:list))
+           (let ((,*values-accumulator* (cl:list))
                  (,retval '#:you-should-never-see-this-value))
-             ,@(%wrap-arg args
-                          `((setf ,retval (,internal-lisp-name ,@(mapcar #'%choose-symbol args))))
-                          accum)
-             (push ,retval ,accum)
-             (values-list ,accum)))))))
+             ,(loop :for (value var actual-type parsed-type) :in (cons '(nil nil nil nil) (reverse args))
+                    :for body = `(setf ,retval (,internal-lisp-name ,@(mapcar #'%choose-symbol args)))
+                    :then (expand-to-foreign-dyn value var (cl:list body) parsed-type)
+                    :finally (cl:return body))
+             (push ,retval ,*values-accumulator*)
+             (values-list ,*values-accumulator*)))))))
 
-#+(or) (define-c-function "foo" :void ((a :int) (b (return :boolean)) (c (place object))))
+#+(or) (defcfun* "foo" :void ((a :int) (b (return :boolean)) (c (place :boolean))))
