@@ -200,7 +200,7 @@
     (let* ((len (length value))
            (tup (tuple.new* len))
            (i 0))
-      (dolist (e value)
+      (dolist (e value tup)
         (tuple.set-item tup i e)
         (incf i))))
   (:from (value type)
