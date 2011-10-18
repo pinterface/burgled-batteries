@@ -94,7 +94,7 @@ imports for this macro to expand successfully."
                ,@(when (stringp docstring) `(,docstring))
                (let ((,pyfunc (%get-function ,python-name)))
                  (with-decrements (,pyfunc)
-                   (object.call-object ,pyfunc (vector ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords))))))))))))
+                   (object.call-object ,pyfunc (list ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords))))))))))))
 
 ;; FIXME: nonsensical for translated values
 (defmacro defpyslot (name &optional lisp-name)
