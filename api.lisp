@@ -42,7 +42,9 @@ method of translation is known)."
           (handler-case
               (.compile-string code "<string>" :expression)
             (syntax-error () (.compile-string code "<string>" :statement)))))
-    (eval.eval-code* code-ptr *py-main-module-dict* *py-main-module-dict*)))
+    (unwind-protect
+         (eval.eval-code* code-ptr *py-main-module-dict* *py-main-module-dict*)
+      (.dec-ref code-ptr))))
 
 (defmethod run* ((file pathname))
   (error "Sorry, running a Python file is not yet supported."))
@@ -51,10 +53,7 @@ method of translation is known)."
 ;; translate the value ourselves.
 (defun run (thing)
   "Like RUN*, but makes an effort to return a Lispy value."
-  (let* ((val (run* thing))
-         (ret (multiple-value-list (cffi:convert-from-foreign val '(python.cffi::can-error python.cffi::object)))))
-    (unless (cffi:pointerp (first ret)) (.dec-ref val))
-    (values-list ret)))
+  (cffi:convert-from-foreign (run* thing) '(python.cffi::can-error python.cffi::object)))
 
 (defun apply (func &rest args)
   (object.call-object func (cl:apply #'vector args)))
