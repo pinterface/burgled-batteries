@@ -320,7 +320,7 @@ specified).
                ,@from-body))
            (defmethod foreign-is-convertable-to-type-p (value (type ,foreign-type-class))
              (declare (ignore type))
-             (,c-type-check value))
+             ,(when (assoc-value options :from) `(,c-type-check value)))
            (defmethod lisp-is-convertable-to-foreign-p (value (type ,foreign-type-class))
              (declare (ignorable value) (ignore type))
              ,(when lisp-type `(typep value ',lisp-type)))
