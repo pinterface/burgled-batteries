@@ -65,19 +65,19 @@
             :do (cl:return (translate-to-foreign value foreign-type))
           :finally (cl:return value)))
   (:from (value type)
-    (unless (null-pointer-p value)
-      ;; NECESSARY!  If we return the pointer, the later .DEC-REF in tff will
-      ;; be too early; if we convert to a subtype of PyObject, that conversion
-      ;; will also trigger a .DEC-REF, taking us to zero before we're ready.
-      (unless (borrowed-reference-p type) (.inc-ref value))
-      (cond
-        ((%none.check value) (values)) ; treat Py_None as returning nothing
-        (t
-         (loop :for (lisp-name . type-parser) :in *type-map*
-               :for foreign-type := (funcall type-parser reference-type argument-type)
-               :when (foreign-is-convertable-to-type-p value foreign-type)
-                 :do (cl:return (translate-from-foreign value foreign-type))
-               :finally (cl:return value)))))))
+    (cond
+      ((null-pointer-p value) nil)
+      ((%none.check value) (values)) ; treat Py_None as returning nothing
+      (t
+       ;; NECESSARY!  If we return the pointer, the later .DEC-REF in tff will
+       ;; be too early; if we convert to a subtype of PyObject, that conversion
+       ;; will also trigger a .DEC-REF, taking us to zero before we're ready.
+       (unless (borrowed-reference-p type) (.inc-ref value))
+       (loop :for (lisp-name . type-parser) :in *type-map*
+             :for foreign-type := (funcall type-parser reference-type argument-type)
+             :when (foreign-is-convertable-to-type-p value foreign-type)
+               :do (cl:return (translate-from-foreign value foreign-type))
+             :finally (cl:return value))))))
 
 ;; PyType objects have a structure with something we want.  Unfortunately for
 ;; us, the part we want is a ways into it.
