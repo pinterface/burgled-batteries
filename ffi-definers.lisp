@@ -339,11 +339,6 @@ platform and compiler options."
 ;;;; Translation Helpers for Functions Which Return Error Indicators
 (defun %error-occurred-p () (not (null-pointer-p (err.occurred*))))
 
-;; FIXME: In some cases the return value may-or-may-not indicate an error and we
-;;        have to check (err.occurred*).  Since (err.occurred*) will always be
-;;        non-null after an error (with a few exceptions where the error isn't
-;;        fetchable at all), it might make more sense just to always check it
-;;        and not bother with the return values of functions.
 (define-foreign-type can-error ()
   ((error-values   :initarg :error-values   :accessor error-values   :initform nil)
    (success-values :initarg :success-values :accessor success-values :initform nil)
