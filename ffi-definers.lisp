@@ -464,14 +464,14 @@ platform and compiler options."
       (setf (aref array i) (mem-aref value :uchar i)))))
 
 ;;; FFI -> Lisp Error Translation
-(define-condition python-condition () ()
-  (:documentation "The base condition type for all conditions dealing with the Python interpreter."))
-(define-condition python-warning (python-condition warning) ()
-  (:documentation "The base condition type for all Python-issued warnings."))
-(define-condition python-error (python-condition error)
+(define-condition python-condition ()
   ((exception-type :initarg :type)
    (exception-value :initarg :value)
    (exception-trace :initarg :trace))
+  (:documentation "The base condition type for all conditions dealing with the Python interpreter."))
+(define-condition python-warning (python-condition warning) ()
+  (:documentation "The base condition type for all Python-issued warnings."))
+(define-condition python-error (python-condition error) ()
   (:documentation "The base condition type for all Python-issued errors."))
 
 (define-condition unfetched-python-error (python-error)
