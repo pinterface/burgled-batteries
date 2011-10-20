@@ -257,9 +257,6 @@ variable pointing to the \"PyFoo_Type\" type object, the \"PyFoo_Check\" and
 object (FOO, FOO!, and FOO?) for use as the types in DEFPYFUN forms.
 
 OPTIONS may consist of any of the following forms:
- (:errorp function) :: A function which determines whether a value of this type
-   indicates the occurrence of an error.  The error-checking function operates
-   on the /untranslated/ C object.
  (:type lisp-type) :: LISP-TYPE is a Lisp type-specifier, which should cause
    (typep v lisp-type) to return true in the event the given lisp value V should
    be converted into the python type being defined.  If unspecified, automagical
@@ -290,8 +287,7 @@ specified).
          (c-type-check-exact (translate-python-name (format nil "~A_CheckExact" c-name)))
          (foreign-type-class (symbolicate '#:foreign-python- lisp-name '#:-type))
          (to   (or (assoc-value options :to)   '((value type) value)))
-         (from (or (assoc-value options :from) '((value type) (unless (borrowed-reference-p type) (.inc-ref value)) value)))
-         (errorp (car (assoc-value options :errorp))))
+         (from (or (assoc-value options :from) '((value type) (unless (borrowed-reference-p type) (.inc-ref value)) value))))
     (destructuring-bind ((to-val to-type) &rest to-body) to
       (destructuring-bind ((from-val from-type) &rest from-body) from
         `(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -328,8 +324,7 @@ specified).
            (defmethod lisp-is-convertable-to-foreign-p (value (type ,foreign-type-class))
              (declare (ignorable value) (ignore type))
              ,(when lisp-type `(typep value ',lisp-type)))
-           (register-python-type ',lisp-name (find-type-parser ',lisp-name))
-           ,@(when errorp `((register-error-checker ',lisp-name ,errorp))))))))
+           (register-python-type ',lisp-name (find-type-parser ',lisp-name)))))))
 
 (defmacro defpyfun* (lisp-name list-of-pyfun-args &body options)
   "Takes multiple arguments to defpyfun, and expands into a defpyfun for the
@@ -342,12 +337,6 @@ platform and compiler options."
         :finally (error "Unable to find suitable C definition to create function ~A~%" lisp-name)))
 
 ;;;; Translation Helpers for Functions Which Return Error Indicators
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defvar *error-checkers* (make-hash-table))
-  (defun register-error-checker (symbol function)
-    (setf (gethash symbol *error-checkers*) function))
-  (defun get-error-checker (symbol)
-    (gethash symbol *error-checkers*)))
 (defun %error-occurred-p () (not (null-pointer-p (err.occurred*))))
 
 ;; FIXME: In some cases the return value may-or-may-not indicate an error and we
@@ -358,16 +347,13 @@ platform and compiler options."
 (define-foreign-type can-error ()
   ((error-values   :initarg :error-values   :accessor error-values   :initform nil)
    (success-values :initarg :success-values :accessor success-values :initform nil)
-   (error-checker  :initarg :error-checker  :accessor error-checker)
    (fetchablep :initarg :fetchablep :reader error-is-fetchable-p)))
 (define-parse-method can-error (actual-type &key success failure (fetchablep t))
-  (let ((checkerr (get-error-checker (first (ensure-list actual-type)))))
-    (make-instance 'can-error
-                   :actual-type actual-type
-                   :fetchablep fetchablep
-                   :success-values (ensure-list success)
-                   :error-values (ensure-list failure)
-                   :error-checker checkerr)))
+  (make-instance 'can-error
+                 :actual-type actual-type
+                 :fetchablep fetchablep
+                 :success-values (ensure-list success)
+                 :error-values (ensure-list failure)))
 
 (define-parse-method soft-error (actual-type &key success failure)
   (parse-type `(can-error ,actual-type :success ,success :failure ,failure :fetchablep t)))
@@ -400,10 +386,6 @@ platform and compiler options."
          `(if (member ,value ',(error-values type) :test #'equal)
               ,unfetchable-error
               ,expand-actual))
-        ((error-checker type)
-         `(if (funcall ,(error-checker type) ,value)
-              ,unfetchable-error
-              ,expand-actual))
         (t expand-actual)))))
 
 #+(or) ;; no translate-to-foreign
@@ -411,18 +393,11 @@ platform and compiler options."
   (free-translated-object value (cffi::actual-type type) param))
 
 ;;; Some Helper Types
-(dolist (x '(:int :long :long-long size-t ssize-t))
-  (register-error-checker x (curry #'= -1)))
-(dolist (x '(:uint :ulong :unsigned-long-long))
-  (register-error-checker x (lambda (v) (declare (ignore v)) (%error-occurred-p))))
-(register-error-checker :double (curry #'= -1.0))
 (defctype 0-on-success          (can-error :int :success 0))
 (defctype 0-on-success/no-fetch (can-error :int :success 0 :fetchablep nil))
 (defctype 0-on-failure          (can-error :int :failure 0))
 (defctype boolean! (can-error :boolean :success (0 1)))
 (defctype ssize-t! (can-error ssize-t))
-(register-error-checker :pointer #'null-pointer-p)
-(register-error-checker :string  #'null-pointer-p)
 
 ;;;; Translation Helpers for Python Types
 (define-foreign-type foreign-python-type ()

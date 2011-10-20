@@ -58,7 +58,6 @@
 
 ;;; PyObject is the root of all other types
 (defpytype "PyObject"
-  (:errorp #'null-pointer-p)
   (:to (value type)
     (loop :for (lisp-name . type-parser) :in *type-map*
           :for foreign-type := (funcall type-parser reference-type argument-type)
@@ -148,7 +147,6 @@
 (defcstruct %complex (real :double) (imag :double))
 (defpytype "PyComplex"
   (:type cl:complex)
-  (:errorp #'%error-occurred-p)
   (:to (value type)
     (complex.from-doubles* (realpart value) (imagpart value)))
   (:from (value type)
