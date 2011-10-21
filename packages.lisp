@@ -5,6 +5,7 @@
   (:export #:.initialize
            #:.finalize
            #:import.add-module
+           #:with-refcnt-barrier
            #:.dec-ref
            #:.inc-ref
            #:+None+

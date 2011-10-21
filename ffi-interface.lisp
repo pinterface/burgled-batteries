@@ -77,7 +77,15 @@
              :for foreign-type := (funcall type-parser reference-type argument-type)
              :when (foreign-is-convertable-to-type-p value foreign-type)
                :do (cl:return (translate-from-foreign value foreign-type))
-             :finally (cl:return value))))))
+             ;; This should probably occur in T-F-F for F-P-T, but then we
+             ;; have multiple values and recursion from the above T-F-F to
+             ;; deal with, and that would be much less straightforward.
+             :finally (cond
+                        ((boundp '*in-barrier*)
+                         (let ((value (make-instance 'python-reference :pointer value)))
+                           (push value *in-barrier*)
+                           (cl:return value)))
+                        (t (cl:return value))))))))
 
 ;; PyType objects have a structure with something we want.  Unfortunately for
 ;; us, the part we want is a ways into it.

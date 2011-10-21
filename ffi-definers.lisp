@@ -600,3 +600,62 @@ platform and compiler options."
                                ,(%ensure-function initializer-fn))
        (export ',lisp-condition-name)
        ',lisp-condition-name)))
+
+;;;; refcnt Barrier
+
+(defvar *in-barrier*)
+
+(defclass python-reference ()
+  ((pointer :initarg :pointer :reader python-reference-pointer))
+  (:documentation "A wrapper around a :POINTER, for use in refcnt barriers to ensure pointers do not escape their extent."))
+
+;; Ensure nobody else has to care about the translations
+(defmethod translate-to-foreign ((value python-reference) type)
+  (translate-to-foreign (python-reference-pointer value) type))
+(defmethod translate-from-foreign ((value python-reference) type)
+  (translate-from-foreign (python-reference-pointer value) type))
+(defmethod free-translated-object ((value python-reference) type param)
+  (free-translated-object (python-reference-pointer value) type param))
+
+(defun invalidate-reference (reference)
+  (.dec-ref (python-reference-pointer reference))
+  (slot-makunbound reference 'pointer))
+
+(defun resignal-and-invalidate (c)
+  (unwind-protect
+       (signal c) ; let an outside handler have at it
+    (dolist (slot '(exception-type exception-value exception-trace))
+      (when (and (slot-boundp c slot)
+                 (pointerp (slot-value c slot)))
+        (.dec-ref (slot-value c slot))
+        (setf (slot-value c slot) nil)))))
+
+(defmacro with-refcnt-barrier (&body body)
+  "
+To avoid leaking refcnts of Python objects without dealing with the hassle of
+managing them yourselves, wrap code in WITH-REFCNT-BARRIER.  Python object
+pointers for which no Lisp translation is known are restricted to existing
+within W-R-B's dynamic extent.
+
+No such Python pointers are allowed to escape[1], including those within
+Python-signalled conditions[2].  Within the extent of W-R-B, when a Python
+object does not have a known translation into a Lisp object, the pointer will be
+wrapped within a PYTHON-REFERENCE object.  Any such PYTHON-REFERENCEs leaving
+the barrier will have the refcnt of their pointer decremented and their pointer
+slots unbound.
+
+Pointers returned by the non-translating versions of functions are not affected
+by W-R-B and must be decremented as appropriate.
+
+[1] Well, as much as anything can be disallowed in CL, anyway.  If you grab the
+    pointer from the enclosing PYTHON-REFERENCE, you can push things outside the
+    barrier.
+[2] The handler resignals conditions before wiping out the exception-* pointers
+    in order to allow handlers outside the scope of W-R-B a chance to deal with
+    pointers where necessary.  Exercise caution in handlers to avoid
+    accidentally escaped pointers."
+  `(let ((*in-barrier* (cl:list)))
+     (unwind-protect
+          (handler-bind ((python-condition #'resignal-and-invalidate))
+            ,@body)
+       (mapcar #'invalidate-reference *in-barrier*))))

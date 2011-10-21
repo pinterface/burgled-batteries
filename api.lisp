@@ -80,11 +80,11 @@ docstring as well.
 
 Note that the Python interpreter must have been started and done any necessary
 imports for this macro to expand successfully."
-  (let* ((names (ensure-list names))
-         (python-name (first names))
-         (lisp-name (or (second names) (intern (string-upcase python-name))))
-         (pyfunc (%get-function python-name)))
-    (with-decrements (pyfunc)
+  (with-refcnt-barrier
+    (let* ((names (ensure-list names))
+           (python-name (first names))
+           (lisp-name (or (second names) (intern (string-upcase python-name))))
+           (pyfunc (%get-function python-name)))
       (multiple-value-bind (required optional rest keywords) (parse-ordinary-lambda-list args)
         (declare (ignore rest))
         (let* ((docstring (object.get-attr-string pyfunc "__doc__")))
