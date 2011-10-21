@@ -7,6 +7,9 @@
            #:import.add-module
            #:.dec-ref
            #:.inc-ref
+           #:+None+
+           #:+True+
+           #:+False+
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))
