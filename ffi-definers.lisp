@@ -504,6 +504,10 @@ platform and compiler options."
     (when (null-pointer-p exception) (error 'unfetched-python-error))
     (multiple-value-bind (type value traceback)
         (err.fetch-normalized*) ; fetch automatically clears the error
+      (when *use-finalizers*
+        (finalize-pointer type)
+        (finalize-pointer value)
+        (finalize-pointer traceback))
       (funcall (get-exception-signaller type) type value traceback))))
 
 (defun err.fetch-normalized* ()
@@ -659,3 +663,27 @@ by W-R-B and must be decremented as appropriate.
           (handler-bind ((python-condition #'resignal-and-invalidate))
             ,@body)
        (mapcar #'invalidate-reference *in-barrier*))))
+
+;;;; Finalizers
+;;; As a possible alternative (or supplement?) to refcnt barriers, set up a
+;;; finalizer and let the Lisp GC handle all the work of figuring out when
+;;; things are live and when they are not.  This has the obvious advantages of
+;;; not requiring users deal with reference counts while (unlike refcnt
+;;; barriers) still allowing pointers to be passed around freely.
+;;;
+;;; Finalizers currently take precedence over refcnt barriers.  Because they are
+;;; currently experimental, you must wrap code in WITH-POINTER-FINALIZERS to
+;;; enable them (or set *USE-FINALIZERS* to t).  That will cease to be necessary
+;;; if finalizers are adopted in favor of refcnt barriers.
+
+(defun finalize-pointer (pointer)
+  (let ((address (cffi-sys:pointer-address pointer)))
+    (tg:finalize pointer
+                 ;; That's right, we recreate the pointer.
+                 (lambda () (.dec-ref (cffi-sys:make-pointer address))))))
+
+(defvar *use-finalizers* nil)
+
+(defmacro with-pointer-finalizers (&body body)
+  `(let ((*use-finalizers* t))
+     ,@body))

@@ -17,7 +17,7 @@
 (in-package #:burgled-batteries-system)
 
 (defsystem :burgled-batteries
-    :depends-on (#:cffi #:alexandria #:parse-declarations-1.0)
+    :depends-on (#:cffi #:alexandria #:parse-declarations-1.0 #:trivial-garbage)
     :name "burgled-batteries"
     :author (:original "Dmitri Hrapof <hrapof@common-lisp.ru>"
              :current "pinterface <pix@kepibu.org>")
