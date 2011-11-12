@@ -677,10 +677,10 @@ by W-R-B and must be decremented as appropriate.
 ;;; if finalizers are adopted in favor of refcnt barriers.
 
 (defun finalize-pointer (pointer)
-  (let ((address (cffi-sys:pointer-address pointer)))
+  (let ((address (pointer-address pointer)))
     (tg:finalize pointer
                  ;; That's right, we recreate the pointer.
-                 (lambda () (.dec-ref (cffi-sys:make-pointer address))))))
+                 (lambda () (.dec-ref (make-pointer address))))))
 
 (defvar *use-finalizers* nil)
 
