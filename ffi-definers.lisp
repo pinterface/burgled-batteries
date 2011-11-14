@@ -407,6 +407,8 @@ platform and compiler options."
             (if (stolen-reference-p o) :stolen :copied)
             (cffi::actual-type o))))
 
+(defmethod borrowed-reference-p ((object null)) nil)
+
 (defgeneric foreign-is-convertable-to-type-p (value type)
   (:documentation "Returns true if the foreign-type of VALUE has a known conversion under TYPE.")
   (:method (value (type foreign-python-type))
@@ -676,11 +678,26 @@ by W-R-B and must be decremented as appropriate.
 ;;; enable them (or set *USE-FINALIZERS* to t).  That will cease to be necessary
 ;;; if finalizers are adopted in favor of refcnt barriers.
 
-(defun finalize-pointer (pointer)
-  (let ((address (pointer-address pointer)))
-    (tg:finalize pointer
-                 ;; That's right, we recreate the pointer.
-                 (lambda () (.dec-ref (make-pointer address))))))
+(defstruct (wrapped (:constructor wrap-value (value)))
+  "A wrapper around POINTERs to ensure they are properly GCed."
+  (value (null-pointer) :read-only t))
+
+(defmethod translate-to-foreign ((value wrapped) type)
+  (translate-to-foreign (wrapped-value value) type))
+(defmethod translate-from-foreign ((value wrapped) type)
+  (translate-from-foreign (wrapped-value value) type))
+(defmethod free-translated-object ((value wrapped) type param)
+  (free-translated-object (wrapped-value value) type param))
+
+(defun finalize-pointer (pointer &optional type)
+  (cond
+    ((null-pointer-p pointer) pointer)
+    (t (.inc-ref pointer)
+       (tg:finalize (wrap-value pointer)
+                    (lambda ()
+                      (.dec-ref pointer)
+                      (unless (borrowed-reference-p type)
+                        (.dec-ref pointer)))))))
 
 (defvar *use-finalizers* nil)
 
