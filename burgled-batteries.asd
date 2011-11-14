@@ -16,7 +16,7 @@
 (defpackage #:burgled-batteries-system (:use #:asdf #:cl #-burgled-batteries.guess-not-grovel #:cffi-grovel))
 (in-package #:burgled-batteries-system)
 
-(defsystem :burgled-batteries
+(defsystem "burgled-batteries"
     :depends-on (#:cffi #:alexandria #:parse-declarations-1.0 #:trivial-garbage)
     :name "burgled-batteries"
     :author (:original "Dmitri Hrapof <hrapof@common-lisp.ru>"
