@@ -1,5 +1,5 @@
 (defpackage #:python-cffi.test
-  (:use #:cl #:cl-quickcheck))
+  (:use #:cl #:cl-quickcheck #:bordeaux-threads))
 (in-package #:python-cffi.test)
 
 (burgled-batteries:startup-python)
