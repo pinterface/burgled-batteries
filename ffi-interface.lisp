@@ -81,7 +81,7 @@
              ;; have multiple values and recursion from the above T-F-F to
              ;; deal with, and that would be much less straightforward.
              :finally (cond
-                        (*use-finalizers* (finalize-pointer value))
+                        (*use-finalizers* (cl:return (finalize-pointer value)))
                         ((boundp '*in-barrier*)
                          (let ((value (make-instance 'python-reference :pointer value)))
                            (push value *in-barrier*)
