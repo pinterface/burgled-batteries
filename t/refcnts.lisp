@@ -15,7 +15,7 @@
                          (assert (= orig-refcnt current-refcnt) ()
                                  "Reference count for ~S was ~A by ~S"
                                  code
-                                 (if (> orig-refcnt current-refcnt) "increased" "decreased")
+                                 (if (> orig-refcnt current-refcnt) "decreased" "increased")
                                  python-code)
                          (format t ".")))
                   (ensure-unchanged-refcnt code)
