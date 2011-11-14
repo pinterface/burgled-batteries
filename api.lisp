@@ -5,7 +5,7 @@
 
 (defun startup-python ()
   (.initialize)
-  (setf *py-main-module* (import.add-module "__main__"))
+  (setf *py-main-module* (import.add-module* "__main__"))
   (setf *py-main-module-dict* (module.get-dict* *py-main-module*))
   (let ((tmp (run.string* "from __builtin__ import *" :statement
                           *py-main-module-dict* (cffi:null-pointer))))
@@ -17,7 +17,7 @@
 
 (defun import (name)
   (let ((p (position #\. name)))
-    (let ((m (import.import-module-ex name *py-main-module-dict* *py-main-module-dict* (cffi:null-pointer))))
+    (let ((m (import.import-module-ex* name *py-main-module-dict* *py-main-module-dict* (cffi:null-pointer))))
       (unwind-protect
 	   (object.set-attr-string *py-main-module* (if p (subseq name 0 p) name) m)
 	(.dec-ref m)))))
@@ -40,8 +40,8 @@ method of translation is known)."
           ;; (allowing us to get a value), and only if that fails do we fall
           ;; back to a statement (for which no value will be returned).
           (handler-case
-              (.compile-string code "<string>" :expression)
-            (syntax-error () (.compile-string code "<string>" :statement)))))
+              (.compile-string* code "<string>" :expression)
+            (syntax-error () (.compile-string* code "<string>" :statement)))))
     (unwind-protect
          (eval.eval-code* code-ptr *py-main-module-dict* *py-main-module-dict*)
       (.dec-ref code-ptr))))
