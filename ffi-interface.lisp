@@ -80,13 +80,14 @@
              ;; This should probably occur in T-F-F for F-P-T, but then we
              ;; have multiple values and recursion from the above T-F-F to
              ;; deal with, and that would be much less straightforward.
-             :finally (cond
-                        (*use-finalizers* (cl:return (finalize-pointer value type)))
-                        ((boundp '*in-barrier*)
-                         (let ((value (make-instance 'python-reference :pointer value)))
-                           (push value *in-barrier*)
-                           (cl:return value)))
-                        (t (cl:return value))))))))
+             :finally (cl:return
+                        (cond
+                          (*use-finalizers* (finalize-pointer value type))
+                          ((boundp '*in-barrier*)
+                           (let ((value (make-instance 'python-reference :pointer value)))
+                             (push value *in-barrier*)
+                             value))
+                          (t value))))))))
 
 ;; PyType objects have a structure with something we want.  Unfortunately for
 ;; us, the part we want is a ways into it.
