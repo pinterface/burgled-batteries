@@ -97,7 +97,9 @@
   #+python.trace-refs (-ob-prev object)
   ;; #endif
   (refcnt ssize-t)
-  (type :pointer) (name :pointer)
+  (type :pointer)
+  (size ssize-t)
+  (name :pointer)
   (basicsize ssize-t) (itemsize ssize-t)
   ;; standard operations
   (dealloc :pointer) (print   :pointer) (getattr :pointer)
