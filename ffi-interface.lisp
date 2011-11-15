@@ -89,8 +89,7 @@
                              value))
                           (t value))))))))
 
-;; PyType objects have a structure with something we want.  Unfortunately for
-;; us, the part we want is a ways into it.
+;; *sigh*  If only C had introspection.
 (defcstruct %type
   ;; #ifdef Py_TRACE_REFS
   #+python.trace-refs (-ob-next object)
@@ -111,7 +110,7 @@
   (getattro :pointer) (setattro :pointer)
   ;; as buffer
   (as-buffer :pointer)
-  ;; the part we actually care about
+  ;; flags marking optional/expanded features
   (flags type-flags)
   ;; docstring
   (doc :pointer)
@@ -120,7 +119,27 @@
   ;; weak references
   (weaklistoffset ssize-t)
   ;; iterators
-  (iter :pointer) (iternext :pointer))
+  (iter :pointer) (iternext :pointer)
+  ;; attribute descriptors and subclassing
+  (methods :pointer)
+  (members :pointer)
+  (getset :pointer)
+  (base :pointer)
+  (dict :pointer #+(or) (dict :borrowed))
+  (descr-get :pointer) (descr-set :pointer)
+  (dictoffset :long)
+  (init :pointer) (alloc :pointer) (new :pointer) (free :pointer)
+  (is-gc :pointer)
+  ;; Translation would be nice when we want it, but CFFI doesn't know about
+  ;; tuples and dicts at this point.  It /does/ know about objects, though.
+  ;; Should probably have a way to get either :pointer or translated object,
+  ;; though, like functions have the PTRing -* variants--have a PTRing
+  ;; slot-name* variant.
+  (bases :pointer #+(or) (tuple :borrowed))
+  (mro :pointer #+(or) (tuple :borrowed))
+  (cache :pointer)
+  (subclasses :pointer)
+  (weaklist :pointer))
 
 (defpytype "PyType")
 
