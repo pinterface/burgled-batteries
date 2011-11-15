@@ -507,9 +507,9 @@ platform and compiler options."
     (multiple-value-bind (type value traceback)
         (err.fetch-normalized*) ; fetch automatically clears the error
       (when *use-finalizers*
-        (finalize-pointer type)
-        (finalize-pointer value)
-        (finalize-pointer traceback))
+        (setf type      (finalize-pointer type))
+        (setf value     (finalize-pointer value))
+        (setf traceback (finalize-pointer traceback)))
       (funcall (get-exception-signaller type) type value traceback))))
 
 (defun err.fetch-normalized* ()
