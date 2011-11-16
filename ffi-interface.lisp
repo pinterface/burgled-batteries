@@ -10,16 +10,19 @@
     (t (:default "libpython")))
   (use-foreign-library python-library))
 
+;;;; C-level macros (as read-time conditionals)
+;;; Automatically detected by their effects.
+(eval-when (:compile-toplevel :load-toplevel)
+  ;; Py_TRACE_REFS
+  (if (or (foreign-symbol-pointer "Py_InitModule4TraceRefs")
+          (foreign-symbol-pointer "Py_InitModule4TraceRefs_64"))
+      (pushnew 'trace-refs *features*)
+      (removef *features* 'trace-refs)))
+
 ;;;; Basic Handling of the PyObject struct
-;; FIXME: We can detect whether Py_TRACE_REFS is enabled either by grovelling,
-;;        /or/ by checking for the existence of either the
-;;        "Py_InitModule4TraceRefs" or "Py_InitModule4TraceRefs_64" function
-;;        (depending on whether we're 32/64-bit).
 (defcstruct %object
-  ;; #ifdef Py_TRACE_REFS
-  #+python.trace-refs (-ob-next object)
-  #+python.trace-refs (-ob-prev object)
-  ;; #endif
+  #+cpython:trace-refs (-ob-next object)
+  #+cpython:trace-refs (-ob-prev object)
   (refcnt ssize-t)
   (type :pointer))
 
@@ -91,10 +94,8 @@
 
 ;; *sigh*  If only C had introspection.
 (defcstruct %type
-  ;; #ifdef Py_TRACE_REFS
-  #+python.trace-refs (-ob-next object)
-  #+python.trace-refs (-ob-prev object)
-  ;; #endif
+  #+cpython:trace-refs (-ob-next object)
+  #+cpython:trace-refs (-ob-prev object)
   (refcnt ssize-t)
   (type :pointer)
   (size ssize-t)

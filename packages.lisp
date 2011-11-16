@@ -12,6 +12,7 @@
            #:+None+
            #:+True+
            #:+False+
+           #:trace-refs
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))
