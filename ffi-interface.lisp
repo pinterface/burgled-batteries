@@ -20,13 +20,16 @@
       (removef *features* 'trace-refs)))
 
 ;;;; Basic Handling of the PyObject struct
-(defcstruct (%object :conc-name %object.)
+(defcstruct* %object ()
   #+cpython:trace-refs (-ob-next object)
   #+cpython:trace-refs (-ob-prev object)
   (refcnt ssize-t)
-  (type :pointer))
+  (type :pointer type))
 
-(defun %object.type-check-exact (o type) (pointer-eq (%object.type o) type))
+(defun %object.type-check-exact (o type) (pointer-eq (%object.type* o) type))
+
+(defcstruct* %var (%object)
+  (size ssize-t))
 
 ;;;; Functions Related to Embedding CPython
 (defpyfun "Py_Initialize"   :void ()
@@ -91,12 +94,7 @@
                           (t value))))))))
 
 ;; *sigh*  If only C had introspection.
-(defcstruct (%type :conc-name %type.)
-  #+cpython:trace-refs (-ob-next object)
-  #+cpython:trace-refs (-ob-prev object)
-  (refcnt ssize-t)
-  (type :pointer)
-  (size ssize-t)
+(defcstruct* %type (%var)
   (name :pointer)
   (basicsize ssize-t) (itemsize ssize-t)
   ;; standard operations
@@ -110,7 +108,7 @@
   ;; as buffer
   (as-buffer :pointer)
   ;; flags marking optional/expanded features
-  (flags type-flags)
+  (flags #.(cffi::canonicalize-foreign-type 'type-flags) type-flags)
   ;; docstring
   (doc :pointer)
   ;; mo' functions
@@ -124,18 +122,13 @@
   (members :pointer)
   (getset :pointer)
   (base :pointer)
-  (dict :pointer #+(or) (dict :borrowed))
+  (dict :pointer dict)
   (descr-get :pointer) (descr-set :pointer)
   (dictoffset :long)
   (init :pointer) (alloc :pointer) (new :pointer) (free :pointer)
   (is-gc :pointer)
-  ;; Translation would be nice when we want it, but CFFI doesn't know about
-  ;; tuples and dicts at this point.  It /does/ know about objects, though.
-  ;; Should probably have a way to get either :pointer or translated object,
-  ;; though, like functions have the PTRing -* variants--have a PTRing
-  ;; slot-name* variant.
-  (bases :pointer #+(or) (tuple :borrowed))
-  (mro :pointer #+(or) (tuple :borrowed))
+  (bases :pointer tuple)
+  (mro :pointer tuple)
   (cache :pointer)
   (subclasses :pointer)
   (weaklist :pointer))
@@ -618,7 +611,7 @@
 (defpyfun "PyObject_Type" object! ((o object)))
 (defpyfun "PyObject_TypeCheck" :boolean ((o object) (type type))
   (:implementation (if (or (%object.type-check-exact o type)
-                           (type.is-subtype (%object.type o) type))
+                           (type.is-subtype (%object.type* o) type))
                        1 0)))
 (defpyfun "PyObject_Length" ssize-t! ((o object)))
 (defpyfun "PyObject_Size"   ssize-t! ((o object)))
@@ -728,9 +721,9 @@
 ;;; Iterator Protocol
 (defpyfun "PyIter_Check" :boolean ((o object))
   (:implementation
-   (let ((otype (foreign-slot-value o '%object 'type)))
+   (let ((otype (%object.type* o)))
      (if (and (type.has-feature otype :have-iter)
-              (not (null-pointer-p (foreign-slot-value o '%type 'iternext))))
+              (not (null-pointer-p (%type.iternext o))))
          1 0))))
 (defpyfun "PyIter_Next"  object?  ((o object)))
 
@@ -743,7 +736,7 @@
 (defpyfun "PyType_ClearCache" :uint ())
 (defpyfun "PyType_Modified" :void ((type type)))
 (defpyfun "PyType_HasFeature" :boolean ((o object) (feature type-flags))
-  (:implementation (logand feature (foreign-bitfield-value 'type-flags (foreign-slot-value o '%type 'flags)))))
+  (:implementation (logand feature (%type.flags* o))))
 (defpyfun "PyType_IS_GC"      :boolean ((o object))
   (:implementation (if (type.has-feature o :have-gc) 1 0)))
 (defpyfun "PyType_IsSubtype"  :boolean ((a type) (b type)))
@@ -1285,6 +1278,8 @@
 (defpyfun "PyObject_GC_Del"     :void ((op object))) ; op MUST have been malloced using object.gc-new
 (defpyfun "PyObject_GC_UnTrack" :void ((op object))) ; op MUST have been malloced using object.gc-new
 
+;; Run the delayed cstruct bits
+(finalize-cstructs)
 
 #+(or) ;; WARNING: don't trace if lots of data.  (feedparser.parse(my-lj) produces ~195k lines)
 (trace translate-to-foreign translate-from-foreign free-translated-object

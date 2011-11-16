@@ -704,3 +704,59 @@ by W-R-B and must be decremented as appropriate.
 (defmacro with-pointer-finalizers (&body body)
   `(let ((*use-finalizers* t))
      ,@body))
+
+;;;; C structs
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *c-structs* (make-hash-table))
+  (defparameter *delayed-cstruct-code* nil))
+
+(defun untranslated-fields (fields)
+  (loop :for (name untranslated-type translated-type) :in fields
+        :collect `(,(if translated-type (symbolicate name "*") name)
+                   ,untranslated-type)))
+
+(defun translated-fields (fields)
+  (loop :for (name untranslated-type translated-type) :in fields
+        :when translated-type
+          :collect `(,name ,(if (assoc-value *type-map* translated-type)
+                              `(,translated-type :borrowed)
+                              translated-type))))
+
+(defmacro defcstruct* (name-and-options (&optional parent) &body fields)
+  "Define the layout of a foreign structure."
+  (cffi::discard-docstring fields)
+  (destructuring-bind (name . options)
+      (ensure-list name-and-options)
+    (let* ((untranslated-fields (untranslated-fields fields))
+           (translated-fields (translated-fields fields))
+           (struct-fields (append (gethash parent *c-structs*) untranslated-fields))
+           (accessor-fields (append untranslated-fields translated-fields))
+           (conc-name (symbolicate name ".")))
+      (setf (gethash name *c-structs*) struct-fields)
+      `(progn
+         (eval-when (:compile-toplevel :load-toplevel :execute)
+           (cffi::notice-foreign-struct-definition ',name ',options ',struct-fields)
+           ,@(loop :for (field type) :in accessor-fields
+                   :for accessor = (symbolicate conc-name field)
+                   :collect `(declaim (inline ,accessor (setf ,accessor))))
+           ,@(cffi::generate-struct-accessors name conc-name
+                                              (mapcar #'car untranslated-fields)))
+         ;; CFFI expects types to exist during compilation.  Because they might
+         ;; be forward-referenced, we push the translating slots and accessors
+         ;; into FINALIZE-CSTRUCTS, which should be called after all the types
+         ;; are defined.
+         (eval-when (:compile-toplevel :load-toplevel)
+           (let ((ptype (parse-type ',name)))
+             (appendf *delayed-cstruct-code*
+                      (loop :for (field type) :in ',translated-fields
+                            :for offset = (foreign-slot-offset ',name (symbolicate field "*"))
+                            :collect `(setf (gethash ',field (cffi::slots ,ptype))
+                                            (cffi::make-struct-slot ',field ,offset ',type 1)))))
+           (appendf *delayed-cstruct-code*
+                    ',(cffi::generate-struct-accessors name conc-name (mapcar #'car translated-fields))))
+         ',name))))
+
+(defmacro finalize-cstructs ()
+  (prog1 `(eval-when (:compile-toplevel :load-toplevel :execute)
+            ,@*delayed-cstruct-code*)
+    (setf *delayed-cstruct-code* nil)))
