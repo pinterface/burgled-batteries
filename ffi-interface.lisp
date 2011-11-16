@@ -20,14 +20,12 @@
       (removef *features* 'trace-refs)))
 
 ;;;; Basic Handling of the PyObject struct
-(defcstruct %object
+(defcstruct (%object :conc-name %object.)
   #+cpython:trace-refs (-ob-next object)
   #+cpython:trace-refs (-ob-prev object)
   (refcnt ssize-t)
   (type :pointer))
 
-(defun %object.refcnt (o) (and (pointerp o) (not (null-pointer-p o)) (foreign-slot-value o '%object 'refcnt)))
-(defun %object.type (o) (foreign-slot-value o '%object 'type))
 (defun %object.type-check-exact (o type) (pointer-eq (%object.type o) type))
 
 ;;;; Functions Related to Embedding CPython
@@ -93,7 +91,7 @@
                           (t value))))))))
 
 ;; *sigh*  If only C had introspection.
-(defcstruct %type
+(defcstruct (%type :conc-name %type.)
   #+cpython:trace-refs (-ob-next object)
   #+cpython:trace-refs (-ob-prev object)
   (refcnt ssize-t)
