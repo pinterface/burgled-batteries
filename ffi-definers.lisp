@@ -746,14 +746,13 @@ by W-R-B and must be decremented as appropriate.
          ;; into FINALIZE-CSTRUCTS, which should be called after all the types
          ;; are defined.
          (eval-when (:compile-toplevel :load-toplevel)
-           (let ((ptype (parse-type ',name)))
-             (appendf *delayed-cstruct-code*
-                      (loop :for (field type) :in ',translated-fields
-                            :for offset = (foreign-slot-offset ',name (symbolicate field "*"))
-                            :collect `(setf (gethash ',field (cffi::slots ,ptype))
-                                            (cffi::make-struct-slot ',field ,offset ',type 1)))))
            (appendf *delayed-cstruct-code*
-                    ',(cffi::generate-struct-accessors name conc-name (mapcar #'car translated-fields))))
+                    '((let ((ptype (parse-type ',name)))
+                        (loop :for (field type) :in (translated-fields ',fields)
+                              :for offset = (foreign-slot-offset ',name (symbolicate field "*"))
+                              :do (setf (gethash field (cffi::slots ptype))
+                                        (cffi::make-struct-slot field offset type 1))))
+                      ,@(cffi::generate-struct-accessors name conc-name (mapcar #'car translated-fields)))))
          ',name))))
 
 (defmacro finalize-cstructs ()
