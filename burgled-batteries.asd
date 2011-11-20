@@ -17,7 +17,8 @@
 (in-package #:burgled-batteries-system)
 
 (defsystem "burgled-batteries"
-    :depends-on (#:cffi #:alexandria #:parse-declarations-1.0 #:trivial-garbage)
+    :depends-on (#:cffi #:alexandria #:parse-declarations-1.0 #:trivial-garbage
+                        #-burgled-batteries.guess-not-grovel #:cl-fad)
     :name "burgled-batteries"
     :author (:original "Dmitri Hrapof <hrapof@common-lisp.ru>"
              :current "pinterface <pix@kepibu.org>")
@@ -33,17 +34,19 @@ preference for guessing by evaluating the following form before telling ASDF to
 load this system:
   (push :burgled-batteries.guess-not-grovel *features*)
 
-If you /would/ like to use the groveller, you may need to edit the .ASD file to
-configure the directory where Python header files are located.  (My apologies: I
-hope for this to be both more easily configurable, and less necessary, in the
-future.)
+If you /would/ like to use the groveller, B-B will attempt to determine the
+location of Python's C header files, and will prompt you to specify the
+appropriate directory if one cannot be found.  To grovel against a specific
+copy of Python's header files, you may need to edit
+  (defparameter *cpython-include-dir* ...)
+in #p\"grovel-include-dir.lisp\".
 "
     :serial t
     :components
     ((:file "packages")
      #-burgled-batteries.guess-not-grovel (:file "grovel-bitfields")
-     ;; FIXME: auto-detect location of Python include directory (or at least make it configurable)
-     #-burgled-batteries.guess-not-grovel (grovel-file "grovel" :cc-flags ("-I/usr/include/python2.6"))
+     #-burgled-batteries.guess-not-grovel (:file "grovel-include-dir")
+     #-burgled-batteries.guess-not-grovel (grovel-file "grovel")
      #+burgled-batteries.guess-not-grovel (:file "grovel-guess")
      (:file "cffi-output-args")
      (:file "ffi-definers")

@@ -1,5 +1,7 @@
 (in-package #:python.cffi)
 
+(cc-flags #.(format nil "-I~A" *cpython-include-dir*))
+
 (include "Python.h")
 (include "structmember.h") ; needed for member type flags
 
