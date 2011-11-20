@@ -53,7 +53,7 @@ method of translation is known)."
 ;; translate the value ourselves.
 (defun run (thing)
   "Like RUN*, but makes an effort to return a Lispy value."
-  (cffi:convert-from-foreign (run* thing) '(python.cffi::can-error python.cffi::object)))
+  (cffi:convert-from-foreign (run* thing) 'cpython::object!))
 
 (defun apply (func &rest args)
   (object.call-object func (cl:apply #'vector args)))
