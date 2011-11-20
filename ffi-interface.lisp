@@ -32,6 +32,7 @@
   (size ssize-t))
 
 ;;;; Functions Related to Embedding CPython
+(in-python-docs "/c-api/init.html")
 (defpyfun "Py_Initialize"   :void ()
   (:documentation "Initialize the Python interpreter.  This, or .INITIALIZE-EX, must be called before Python may be used."))
 (defpyfun "Py_InitializeEx" :void ((initsigs :int))
@@ -57,6 +58,7 @@
 #+requires-CHAR*-ARRAY-support (defpyfun "PySys_SetArgv" :void ((argc :int) (argv (:array :string))))
 (defpyfun "Py_SetPythonHome" :void ((home :string))) ; WARNING: requires static string!
 (defpyfun "Py_GetPythonHome" :string ())
+(in-python-docs nil)
 
 ;;;; Definitions Relating to Python Types
 
@@ -307,6 +309,7 @@
 (defpytype "PyCode")
 
 ;;;; API Functions Relating to Threads, Interpreter State, and Debugging
+(in-python-docs "/c-api/init.html")
 
 ;;; Threads
 (defctype interpreter-state :pointer)
@@ -383,6 +386,8 @@
 (defpyfun "PyThreadState_Next" thread-state ((tstate thread-state)))
 
 ;;;; High-level Interpreter Functions
+(in-python-docs "/c-api/veryhigh.html")
+
 (defcstruct compiler-flags (flags :int))
 #+requires-CHAR*-ARRAY-support (defpyfun "Py_Main" :int ((argc :int) (argv (:array :string)))) ;canerr
 ;; NOTE: To support FILE*, we'll need to either get the FILE* for an open stream
@@ -430,12 +435,14 @@
 (defpyfun "PyEval_MergeCompilerFlags" :boolean ((cf compiler-flags)))
 
 ;;;; Memory Management
+(in-python-docs "/c-api/refcounting.html")
 ;; These take pointers, rather than objects, because converting an object to
 ;; pass into these functions would be nonsensical.
 (defpyfun "Py_IncRef" :void ((o :pointer)))
 (defpyfun "Py_DecRef" :void ((o :pointer)))
 
 ;;;; Error Handling
+(in-python-docs "/c-api/exceptions.html")
 
 ;;; Python Error API
 (defctype always-error object!)
@@ -516,8 +523,10 @@
 ;; see ffi-conditions.lisp
 
 ;;;; TODO: Operating System Utilities, System Functions, Process Control
+(in-python-docs nil)
 
 ;;;; Importing Modules
+(in-python-docs "/c-api/import.html")
 ;; Technically, some of these may also return a top-level package instead of a
 ;; module.  But it's all just pointers anyway.
 (defctype initfunc :pointer) ; callback
@@ -542,8 +551,10 @@
 (defpyfun "PyImport_ExtendInittab" 0-on-success ((newtab .inittab)))
 
 ;;;; TODO: Data Marshalling Support
+(in-python-docs nil)
 
 ;;;; Passing Arguments and Building Values
+(in-python-docs "/c-api/arg.html")
 ;;; NOTE: CFFI's type translation facilities mean we probably don't need any of
 ;;;       this.  (Users of this library, on the other hand, might.)
 (defpyfun "PyArg_ParseTuple" 0-on-failure ((args tuple) (format :string) &rest))
@@ -556,8 +567,10 @@
 #+requires-va_list-support (defpyfun "Py_VaBuildValue" object! ((format :string) (vargs va_list)))
 
 ;;;; TODO: String Conversion and Formatting
+(in-python-docs nil)
 
 ;;;; Reflection
+(in-python-docs "/c-api/reflection.html")
 (defpyfun "PyEval_GetBuiltins" (object! :borrowed) ())
 (defpyfun "PyEval_GetLocals"   (object! :borrowed) ())
 (defpyfun "PyEval_GetGlobals"  (object! :borrowed) ())
@@ -568,10 +581,12 @@
 (defpyfun "PyEval_GetFuncDesc" :string ((func object)))
 
 ;;;; TODO: Codec Registry and Support Functions, Codec Lookup API, Registry API for Unicode Errors
+(in-python-docs nil)
 
 ;;;; Abstract Objects
 
 ;;; Object Protocol
+(in-python-docs "/c-api/object.html")
 #+requires-FILE*-support (defpyfun "PyObject_Print" :int ((o object) (fp :file) (flags :int)))
 (defpyfun "PyObject_HasAttr"       :boolean ((o object) (attr-name object)))
 (defpyfun "PyObject_HasAttrString" :boolean ((o object) (attr-name :string)))
@@ -624,6 +639,7 @@
 (defpyfun "PyObject_GetIter" object! ((o object)))
 
 ;;; Number Protocol
+(in-python-docs "/c-api/number.html")
 (defpyfun "PyNumber_Check" :boolean ((o object)))
 (defpyfun "PyNumber_Add"         object! ((o1 object) (o2 object)))
 (defpyfun "PyNumber_Subtract"    object! ((o1 object) (o2 object)))
@@ -668,6 +684,7 @@
   (:implementation (if (number.check o) 1 0)))
 
 ;;; Sequence Protocol
+(in-python-docs "/c-api/sequence.html")
 (defpyfun "PySequence_Check" :boolean ((o object)))
 (defpyfun "PySequence_Size"   ssize-t! ((o object)))
 (defpyfun "PySequence_Length" ssize-t! ((o object)))
@@ -700,6 +717,7 @@
                          (t (sequence.size o)))))
 
 ;;; Mapping Protocol
+(in-python-docs "/c-api/mapping.html")
 (defpyfun "PyMapping_Check"  :boolean ((o object)))
 (defpyfun "PyMapping_Size"   ssize-t! ((o object)))
 (defpyfun "PyMapping_Length" ssize-t! ((o object)))
@@ -719,6 +737,7 @@
 (defpyfun "PyMapping_SetItemString" 0-on-success ((o object) (key :string) (v object)))
 
 ;;; Iterator Protocol
+(in-python-docs "/c-api/iter.html")
 (defpyfun "PyIter_Check" :boolean ((o object))
   (:implementation
    (let ((otype (%object.type* o)))
@@ -728,11 +747,13 @@
 (defpyfun "PyIter_Next"  object?  ((o object)))
 
 ;;; Old Buffer Protocol (Skipped)
+(in-python-docs nil)
 
 ;;;; Concrete Objects
 
 ;;;; Fundamental Objects
 ;;; Type Objects
+(in-python-docs "/c-api/type.html")
 (defpyfun "PyType_ClearCache" :uint ())
 (defpyfun "PyType_Modified" :void ((type type)))
 (defpyfun "PyType_HasFeature" :boolean ((o object) (feature type-flags))
@@ -746,9 +767,11 @@
 
 ;;; The None Object
 ;;; (no functions)
+(in-python-docs "/c-api/none.html")
 
 ;;;; Numeric Objects
 ;;; Plain Integer Objects
+(in-python-docs "/c-api/int.html")
 ;; FIXME: The docs suggest (int.from-string "123ham" 10) should return 123,
 ;;        "ham" but I get a VALUE-ERROR instead.  Am /I/ supposed to point pend
 ;;        there?
@@ -764,9 +787,11 @@
 (defpyfun "PyInt_ClearFreeList" :int ())
 
 ;;; Boolean Objects
+(in-python-docs "/c-api/bool.html")
 (defpyfun "PyBool_FromLong" bool! ((v :long)))
 
 ;;; Long Integer Objects
+(in-python-docs "/c-api/long.html")
 (defpyfun "PyLong_FromLong"             long! ((v :long)))
 (defpyfun "PyLong_FromUnsignedLong"     long! ((v :ulong)))
 (defpyfun "PyLong_FromSsize_t"          long! ((v ssize-t)))
@@ -792,6 +817,7 @@
 #+requires-VOID*-support (defpyfun "PyLong_AsVoidPtr"              (can-error (:pointer :void))     ((pylong object)))
 
 ;;; Floating Point Objects
+(in-python-docs "/c-api/float.html")
 (defpyfun "PyFloat_FromString" object! ((str object) (pend (return :string))))
 (defpyfun "PyFloat_FromDouble" float! ((v :double)))
 (defpyfun "PyFloat_AsDouble" (soft-error :double) ((pyfloat object)))
@@ -801,6 +827,7 @@
 (defpyfun "PyFloat_ClearFreeList" :int ())
 
 ;;; Complex Number Objects
+(in-python-docs "/c-api/complex.html")
 #+requires-FSBV-support (defpyfun "_Py_c_sum"  %complex ((left %complex) (right %complex)))
 #+requires-FSBV-support (defpyfun "_Py_c_diff" %complex ((left %complex) (right %complex)))
 #+requires-FSBV-support (defpyfun "_Py_c_neg"  %complex ((complex %complex)))
@@ -815,6 +842,7 @@
 
 ;;;; Sequence Objects
 ;;; Byte Array Objects
+(in-python-docs "/c-api/bytearray.html")
 (defpyfun "PyByteArray_FromObject"        byte-array! ((o object)))
 (defpyfun "PyByteArray_FromStringAndSize" byte-array! ((string octet-array) (len ssize-t)))
 (defpyfun "PyByteArray_Concat" byte-array! ((a object) (b object)))
@@ -832,6 +860,7 @@
   (export 'byte-array.as-string))
 
 ;;; String/Bytes Objects
+(in-python-docs "/c-api/string.html")
 (defpyfun "PyString_FromString"        string! ((v :string)))
 (defpyfun "PyString_FromStringAndSize" string! ((v :string) (len ssize-t))) ; size is BYTES, not characters!
 (defpyfun "PyString_FromFormat"        string! ((format :string) &rest))
@@ -865,6 +894,7 @@
 ;(defpyfun "PyBytes_Format" object! ((format object) (args tuple)))
 
 ;;; Unicode Objects
+(in-python-docs "/c-api/unicode.html")
 (defpyfun* unicode.clear-free-list
     (("PyUnicodeUCS2_ClearFreelist" :int ())
      ("PyUnicodeUCS4_ClearFreelist" :int ()))
@@ -1120,8 +1150,10 @@
      ("PyUnicodeUCS4_Contains" boolean! ((container object) (element object)))))
 
 ;;; TODO Buffers and Memoryview Objects
+(in-python-docs nil)
 
 ;;; Tuple Objects
+(in-python-docs "/c-api/tuple.html")
 (defpyfun "PyTuple_New"  tuple! ((len ssize-t)))
 (defpyfun "PyTuple_Pack" tuple! ((n ssize-t) &rest)) ; remaining args are pointers to PyObjects
 (defpyfun "PyTuple_Size" ssize-t! ((p object)))
@@ -1133,6 +1165,7 @@
   (:requires "Python 2.6 (or newer)"))
 
 ;;; List Objects
+(in-python-docs "/c-api/list.html")
 (defpyfun "PyList_New" list! ((len ssize-t)))
 (defpyfun "PyList_Size" ssize-t! ((list object)))
 (defpyfun "PyList_GetItem" (object! :borrowed) ((list list) (index ssize-t)))
@@ -1147,6 +1180,7 @@
 
 ;;;; Mapping Objects
 ;;; Dictionary Objects
+(in-python-docs "/c-api/dict.html")
 (defpyfun "PyDict_New" dict! ())
 (defpyfun "PyDictProxy_New" object! ((dict dict)))
 (defpyfun "PyDict_Clear" :void ((p dict)))
@@ -1170,8 +1204,10 @@
 ;;;; Other Objects
 ;;; Class and Instance Objects
 ;; Skipped because according to the docs they are going away in Python 3
+(in-python-docs "/c-api/class.html")
 
 ;;; Function Objects
+(in-python-docs "/c-api/function.html")
 (defpyfun "PyFunction_New" function! ((code code) (globals dict)))
 (defpyfun "PyFunction_GetCode" (code! :borrowed) ((op function)))
 (defpyfun "PyFunction_GetGlobals" (dict! :borrowed) ((op function)))
@@ -1182,6 +1218,7 @@
 (defpyfun "PyFunction_SetClosure" 0-on-success ((op function) (closure object))) ; FIXME: closure must be either Py_None or a tuple
 
 ;;; Method Objects
+(in-python-docs "/c-api/method.html")
 (defpyfun "PyMethod_New" method! ((func object) (self object) (class object)))
 (defpyfun "PyMethod_Class"    (object! :borrowed) ((meth method)))
 (defpyfun "PyMethod_Function" (object! :borrowed) ((meth method)))
@@ -1190,8 +1227,10 @@
   (:requires "Python 2.6 (or newer)"))
 
 ;;; TODO File Objects
+(in-python-docs "/c-api/file.html")
 
 ;;; Module Objects
+(in-python-docs "/c-api/module.html")
 (defpyfun "PyModule_New" module! ((name :string)))
 (defpyfun "PyModule_GetDict"     (dict :borrowed)    ((module module)))
 (defpyfun "PyModule_GetName"     (can-error :string) ((module module)))
@@ -1200,6 +1239,7 @@
 (defpyfun "PyModule_AddIntConstant"    0-on-success ((module module) (name :string) (value :long)))
 (defpyfun "PyModule_AddStringConstant" 0-on-success ((module module) (name :string) (value :string)))
 
+(in-python-docs nil)
 ;;; TODO Iterator Objects
 ;;; TODO Descriptor Objects
 ;;; TODO Slice Objects
@@ -1216,14 +1256,17 @@
 ;;; TODO Set Objects
 
 ;;; Code Objects
+(in-python-docs "/c-api/code.html")
 ;(defpyfun "PyCode_GetNumFree" :int ((co code)))
 (defpyfun "PyCode_New" code! ((argcount :int) (nlocals :int) (stacksize :int) (flags :int) (code object) (consts object) (names object) (varnames object) (freevars object) (cellvars object) (filename object) (name object) (firstlineno :int) (lnotab object)))
 ;(defpyfun "PyCode_NewEmpty" :int ((filename :string) (funcname :string) (firstlineno :int)))
 
 
 ;;;; TODO: Memory Management
+(in-python-docs "/c-api/memory.html")
 
 ;;;; Object Implementation Support
+(in-python-docs nil)
 ;;; Common Object Structures (order switched with next section out of necessity)
 (defctype c-function :pointer) ; PyCFunction (callbacks)
 (defcstruct method-def
@@ -1240,6 +1283,7 @@
 #+requires-POINTER-ARRAY-support (defpyfun "Py_FindMethod" object! ((table (:array method-def)) (ob object) (name :string)))
 
 ;;; Allocating Objects on the Heap
+(in-python-docs "/c-api/allocation.html")
 ;; FIXME: Should probably make var-object a real type if possible (e.g., via
 ;;        defpytype), otherwise make the var-object CFFI type at least behave
 ;;        like PyObjects and the like (with automatic refcounting and ability to
@@ -1264,6 +1308,7 @@
 
 ;;; Type Objects
 ;; NOTE: The defcstruct is above, by (defpytype "PyType" ...)
+(in-python-docs nil)
 
 ;;; TODO? Number Object Structures
 ;;; TODO? Mapping Object Structures
@@ -1271,6 +1316,7 @@
 ;;; TODO? Buffer Object Structures
 
 ;;; Supporting Cyclic Garbage Collection
+(in-python-docs "/c-api/gcsupport.html")
 (defpyfun "_PyObject_GC_New" object! ((type type)))
 (defpyfun "_PyObject_GC_NewVar" var-object ((type type) (size ssize-t))) ; FIXME: is this canerr?
 (defpyfun "_PyObject_GC_Resize" object! ((op var-object) (newsize ssize-t)))
@@ -1278,6 +1324,7 @@
 (defpyfun "PyObject_GC_Del"     :void ((op object))) ; op MUST have been malloced using object.gc-new
 (defpyfun "PyObject_GC_UnTrack" :void ((op object))) ; op MUST have been malloced using object.gc-new
 
+(in-python-docs nil)
 ;; Run the delayed cstruct bits
 (finalize-cstructs)
 

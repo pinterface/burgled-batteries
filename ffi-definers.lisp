@@ -53,6 +53,11 @@ directly to one of the returned values."
     (cl:list   (values (first names) (second names) (third names)))
     (cl:string (values names (translate-python-name names) t))))
 
+(defvar *python-docs-page* nil)
+(defmacro in-python-docs (page)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (setf *python-docs-page* ,page)))
+
 (defvar *type-map* (cl:list) "An association list of lisp names for foreign Python types (symbols) to type parsers.")
 (defun register-python-type (lisp-name type-parser)
   (if-let ((assoc (assoc lisp-name *type-map*)))
@@ -108,6 +113,9 @@ OPTIONS is a list of any, none, or all, of the following forms:
    is available.  It is used mainly for documentary purposes.
  (:documentation docstring) :: The docstring which should be used for this
    function, if any.
+ (:page uri) :: A string representing the page on docs.python.org which contains
+   Python's documentation for this function.  Defaults to the value set
+   by (in-python-docs page).
  (:if-not-exist &body) :: &body is code which should be executed if the
    specified C function does not exist, an alternate :implementation was not
    specified, and no requirements are known (:requires).  It defaults to
@@ -187,6 +195,7 @@ OPTIONS is a list of any, none, or all, of the following forms:
                          (format-symbol (symbol-package lisp-name) "~A*" lisp-name)))
              (ptr-type (when ptr-name (%translate-type-for-ptr parsed-type)))
              (lisp-args (mapcar (lambda (x) (if (consp x) (first x) x)) args))
+             (url  (or (car (assoc-value options :page)) *python-docs-page*))
              (documentation (assoc-value options :documentation))
              (alternate     (assoc-value options :implementation))
              (requires      (assoc-value options :requires))
@@ -194,6 +203,7 @@ OPTIONS is a list of any, none, or all, of the following forms:
                                 `((error "The C function ~S does not appear to exist." ,name))))
              (normalized-args (mapcar #'normalize-arg args))
              (use-wrapper (some (lambda (a) (and (consp a) (typep (fourth a) 'output-arg))) normalized-args)))
+        (when url (setf documentation (cl:list (format nil "~@[~A~%~%~]see http://docs.python.org~A#~A" (car documentation) url name))))
         `(eval-when (:compile-toplevel :load-toplevel :execute)
            ,(cond
               ((and (foreign-symbol-pointer name)
