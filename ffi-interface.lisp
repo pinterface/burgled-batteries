@@ -227,8 +227,10 @@
         (tuple.set-item tup i e)
         (incf i))))
   (:from (value type)
-    (loop :for i :from 0 :to (1- (tuple.size value))
-          :collect (tuple.get-item value i))))
+    (cond
+      ((null-pointer-p value) (cl:list))
+      (t (loop :for i :from 0 :to (1- (tuple.size value))
+               :collect (tuple.get-item value i))))))
 
 (defpytype "PyList"
   (:type (and vector (not cl:string)))
@@ -237,9 +239,11 @@
       (dotimes (i (length value) list)
         (list.set-item list i (aref value i)))))
   (:from (value type)
-    (let ((array (make-array (list.size value) :adjustable t :fill-pointer t)))
-      (dotimes (i (list.size value) array)
-        (setf (aref array i) (list.get-item value i))))))
+    (cond
+      ((null-pointer-p value) (make-array 0 :adjustable t :fill-pointer t))
+      (t (let ((array (make-array (list.size value) :adjustable t :fill-pointer t)))
+           (dotimes (i (list.size value) array)
+             (setf (aref array i) (list.get-item value i))))))))
 
 ;;; Mapping Types
 (defpytype "PyDict"
@@ -249,17 +253,19 @@
       (maphash (lambda (k v) (dict.set-item dict k v)) value)
       dict))
   (:from (value type)
-    ;; Probably premature optimization, but the below avoids the translation
-    ;; machinery for the bits we'd just GC anyway
-    (let* ((dict (make-hash-table :test #'equal))
-           (items (dict.items* value)))
-      (unwind-protect
-           (dotimes (i (list.size items) dict)
-             (let* ((item (list.get-item* items i))
-                    (key   (tuple.get-item item 0))
-                    (value (tuple.get-item item 1)))
-               (setf (gethash key dict) value)))
-        (.dec-ref items)))))
+    (cond
+      ((null-pointer-p value) (make-hash-table :test #'equal))
+      (t ;; Probably premature optimization, but the below avoids the
+         ;; translation machinery for the bits we'd just GC anyway
+         (let* ((dict (make-hash-table :test #'equal))
+                (items (dict.items* value)))
+           (unwind-protect
+                (dotimes (i (list.size items) dict)
+                  (let* ((item (list.get-item* items i))
+                         (key   (tuple.get-item item 0))
+                         (value (tuple.get-item item 1)))
+                    (setf (gethash key dict) value)))
+             (.dec-ref items)))))))
 
 ;;;; Other Objects
 ;;; Class and Instance Objects
