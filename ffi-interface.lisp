@@ -101,7 +101,7 @@
 
 ;; *sigh*  If only C had introspection.
 (defcstruct* %type (%var)
-  (name :pointer)
+  (name :string)
   (basicsize ssize-t) (itemsize ssize-t)
   ;; standard operations
   (dealloc :pointer) (print   :pointer) (getattr :pointer)
@@ -116,7 +116,7 @@
   ;; flags marking optional/expanded features
   (flags #.(cffi::canonicalize-foreign-type 'type-flags) type-flags)
   ;; docstring
-  (doc :pointer)
+  (doc :string)
   ;; mo' functions
   (traverse :pointer) (clear :pointer) (richcompare :pointer)
   ;; weak references
