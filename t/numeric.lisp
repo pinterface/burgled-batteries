@@ -1,8 +1,4 @@
-(defpackage #:python-cffi.test
-  (:use #:cl #:cl-quickcheck))
 (in-package #:python-cffi.test)
-
-(burgled-batteries:startup-python)
 
 (quickcheck
   (let ((*size* (1- (expt 2 31))))
