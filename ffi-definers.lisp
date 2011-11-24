@@ -260,7 +260,7 @@ pointers by default.  However, you can override that by specifying CFFI-TYPE."
        (export ',lisp-name))))
 
 ;;; Interface for Defining Python Types
-(defmacro defpytype (c-name &body options)
+(defmacro defpytype (c-name-and-opts &body options)
   "Defines a Python Object type, such as PyObject.  This entails creating a
 variable pointing to the \"PyFoo_Type\" type object, the \"PyFoo_Check\" and
 \"PyFoo_CheckExact\" functions, as well as appropriate CFFI types for the
@@ -287,11 +287,14 @@ specifically (that is, when the specific type is mentioned in a DEFPYFUN form)
 as well as when translating a non-specific PyObject (assuming :type is also
 specified).
 "
-  (let* ((lisp-name (translate-python-name c-name))
+  (let* ((c-name-and-opts (ensure-list c-name-and-opts))
+         (c-name (first c-name-and-opts))
+         (c-var-name (or (second c-name-and-opts) c-name))
+         (lisp-name (translate-python-name c-name))
          (can-error-type (symbolicate lisp-name '#:!))
          (soft-error-type (symbolicate lisp-name '#:?))
-         (c-var (format nil "~A_Type" c-name))
-         (lisp-var (format-symbol #.*package* "+~A+" (translate-python-name c-var)))
+         (c-var (format nil "&~A_Type" c-var-name))
+         (lisp-var (format-symbol #.*package* "+~A+" (translate-python-name (format nil "~A_Type" c-name))))
          (lisp-type (car (assoc-value options :type)))
          (c-type-check       (translate-python-name (format nil "~A_Check" c-name)))
          (c-type-check-exact (translate-python-name (format nil "~A_CheckExact" c-name)))

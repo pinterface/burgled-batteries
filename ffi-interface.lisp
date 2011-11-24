@@ -63,7 +63,7 @@
 ;;;; Definitions Relating to Python Types
 
 ;;; PyObject is the root of all other types
-(defpytype "PyObject"
+(defpytype ("PyObject" "PyBaseObject")
   (:to (value type)
     (loop :for (lisp-name . type-parser) :in *type-map*
           :for foreign-type := (funcall type-parser reference-type argument-type)
@@ -94,6 +94,10 @@
                              (push value *in-barrier*)
                              value))
                           (t value))))))))
+
+;; Avoid recursion within object translator
+(defmethod foreign-is-convertable-to-type-p (value (type foreign-python-object-type))
+  nil)
 
 ;; *sigh*  If only C had introspection.
 (defcstruct* %type (%var)
