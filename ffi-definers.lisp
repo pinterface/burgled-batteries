@@ -305,7 +305,7 @@ specified).
       (destructuring-bind ((from-val from-type) &rest from-body) from
         `(eval-when (:compile-toplevel :load-toplevel :execute)
            (define-foreign-type ,foreign-type-class (foreign-python-type) ())
-           (defparameter ,lisp-var (foreign-symbol-pointer ,c-var))
+           (defpyvar ,c-var ,lisp-var)
            (defun ,c-type-check       (o)
              (object.type-check o ,lisp-var))
            (defun ,c-type-check-exact (o)
