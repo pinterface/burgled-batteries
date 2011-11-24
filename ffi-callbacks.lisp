@@ -38,11 +38,12 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
                              ((find '&key args)        :mixed-arguments)
                              (t                        :positional-arguments))))))
 
+;; SELF is NIL.  ARGS is NIL.  (Or a null pointer, if no translation.)
 (defpycallback test-no-arguments bool ()
   (format t "arg: self=~A args=~A~%" self args)
   t)
 
-;; SELF tends to be NIL.  ARGS is an array of arguments.
+;; SELF tends to be NIL.  ARGS is a list of arguments.
 (defpycallback test-arguments bool ((arg1 (bool :borrowed)))
   (format t "arg: self=~A args=~A~%" self args)
   t)
@@ -83,3 +84,6 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
           :do (init-func-def defptr py (get-callback-type lisp) (get-callback lisp)))
     (init-func-def (mem-aref ptr 'method-def (length funcs)) (null-pointer) 0 (null-pointer))
     (.init-module* "lisp_test" ptr)))
+
+#+(or) (make-test-module)
+#+(or) (burgled-batteries:import "lisp_test")
