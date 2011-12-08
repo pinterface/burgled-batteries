@@ -71,6 +71,57 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
         (foreign-slot-value ptr 'method-def 'meth)  meth
         (foreign-slot-value ptr 'method-def 'doc)   doc))
 
+(defun make-pytype (&key name c-struct documentation)
+  (let ((ptr (foreign-alloc '%type)))
+    (setf (%object.refcnt       ptr) 1
+          (%object.type*        ptr) (null-pointer) ; +Type.Type+?
+          (%var.size            ptr) 0
+          (%type.name           ptr) name
+          (%type.basicsize      ptr) (foreign-type-size c-struct)
+          (%type.itemsize       ptr) 0
+          (%type.dealloc        ptr) (null-pointer) ; FIXME: should point to a C callback or something
+          (%type.print          ptr) (null-pointer)
+          (%type.getattr        ptr) (null-pointer)
+          (%type.setattr        ptr) (null-pointer)
+          (%type.compare        ptr) (null-pointer)
+          (%type.repr           ptr) (null-pointer)
+          (%type.as-number      ptr) (null-pointer)
+          (%type.as-sequence    ptr) (null-pointer)
+          (%type.as-mapping     ptr) (null-pointer)
+          (%type.hash           ptr) (null-pointer)
+          (%type.call           ptr) (null-pointer)
+          (%type.str            ptr) (null-pointer)
+          (%type.getattro       ptr) (null-pointer)
+          (%type.setattro       ptr) (null-pointer)
+          (%type.as-buffer      ptr) (null-pointer)
+          (%type.flags          ptr) '()
+          (%type.doc            ptr) (or documentation (null-pointer))
+          (%type.traverse       ptr) (null-pointer)
+          (%type.clear          ptr) (null-pointer)
+          (%type.richcompare    ptr) (null-pointer)
+          (%type.weaklistoffset ptr) 0
+          (%type.iter           ptr) (null-pointer)
+          (%type.iternext       ptr) (null-pointer)
+          (%type.methods        ptr) (null-pointer) ; FIXME
+          (%type.members        ptr) (null-pointer) ; FIXME
+          (%type.getset         ptr) (null-pointer)
+          (%type.base           ptr) (null-pointer) ; FIXME
+          (%type.dict*          ptr) (null-pointer)
+          (%type.descr-get      ptr) (null-pointer)
+          (%type.descr-set      ptr) (null-pointer)
+          (%type.dictoffset     ptr) 0
+          (%type.init           ptr) (null-pointer)
+          (%type.alloc          ptr) (null-pointer)
+          (%type.new            ptr) (foreign-symbol-pointer "PyType_GenericNew")
+          (%type.free           ptr) (null-pointer)
+          (%type.is-gc          ptr) (null-pointer)
+          (%type.bases          ptr) (null-pointer)
+          (%type.mro            ptr) (null-pointer)
+          (%type.cache          ptr) (null-pointer)
+          (%type.subclasses     ptr) (null-pointer)
+          (%type.weaklist       ptr) (null-pointer))
+    (type.ready ptr)))
+
 (defun make-test-module ()
   (let* ((funcs '(("no_args"      test-no-arguments)
                   ("args"         test-arguments)
