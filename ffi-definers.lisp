@@ -770,5 +770,6 @@ by W-R-B and must be decremented as appropriate.
 
 (defmacro finalize-cstructs ()
   (prog1 `(eval-when (:compile-toplevel :load-toplevel :execute)
-            ,@*delayed-cstruct-code*)
+            ,@(or *delayed-cstruct-code*
+                  `((cerror "No delayed code.  Something has gone wrong?"))))
     (setf *delayed-cstruct-code* nil)))
