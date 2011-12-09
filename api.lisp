@@ -22,14 +22,6 @@
 	   (object.set-attr-string *py-main-module* (if p (subseq name 0 p) name) m)
 	(.dec-ref m)))))
 
-(defun eval (expression)
-  "Evaluates a Python expression and returns a Lisp object (or a pointer, if no
-method of translation is known)."
-  (run.string expression :expression *py-main-module-dict* *py-main-module-dict*))
-(defun eval* (expression)
-  "Like EVAL, but always returns a pointer to a Python object."
-  (run.string* expression :expression *py-main-module-dict* *py-main-module-dict*))
-
 (defgeneric run* (thing)
   (:documentation "Runs some code.  When given a string, tries to interpret that string as if it were Python code.  Given a pathname, runs that file.  Returns a pointer."))
 
@@ -66,7 +58,7 @@ method of translation is known)."
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun %get-function (python-name)
-    (let* ((pyfunc (eval* python-name)))
+    (let* ((pyfunc (run* python-name)))
       (cond
         ((callable.check pyfunc) pyfunc)
         (t (.dec-ref pyfunc)

@@ -61,15 +61,12 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
   (:use #:cl #:python.cffi #:alexandria)
   (:shadowing-import-from #:python.cffi #:arithmetic-error #:type-error)
   (:shadow #:import
-           #:eval
            #:apply)
   (:export #:startup-python
            #:shutdown-python
            #:import
            #:run
            #:run*
-           #:eval
-           #:eval*
            #:apply
            #:defpyfun
            #:defpyslot
