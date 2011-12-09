@@ -1,25 +1,22 @@
 (in-package #:burgled-batteries)
 
-(defvar *py-main-module*)
-(defvar *py-main-module-dict*)
+(define-symbol-macro main-module*
+    (import.add-module* "__main__"))
+(define-symbol-macro main-module-dict*
+    (module.get-dict* main-module*))
 
 (defun startup-python ()
-  (.initialize)
-  (setf *py-main-module* (import.add-module* "__main__"))
-  (setf *py-main-module-dict* (module.get-dict* *py-main-module*))
-  (let ((tmp (run.string* "from __builtin__ import *" :statement
-                          *py-main-module-dict* (cffi:null-pointer))))
-    (.dec-ref tmp)))
+  (.initialize))
 
 (defun shutdown-python ()
-  (setf *py-main-module* nil *py-main-module-dict* nil)
   (.finalize))
 
 (defun import (name)
-  (let ((p (position #\. name)))
-    (let ((m (import.import-module-ex* name *py-main-module-dict* *py-main-module-dict* (cffi:null-pointer))))
+  (let ((p (position #\. name))
+        (dict main-module-dict*))
+    (let ((m (import.import-module-ex* name dict dict (cffi:null-pointer))))
       (unwind-protect
-	   (object.set-attr-string *py-main-module* (if p (subseq name 0 p) name) m)
+	   (object.set-attr-string main-module* (if p (subseq name 0 p) name) m)
 	(.dec-ref m)))))
 
 (defgeneric run* (thing)
@@ -33,9 +30,10 @@
           ;; back to a statement (for which no value will be returned).
           (handler-case
               (.compile-string* code "<string>" :expression)
-            (syntax-error () (.compile-string* code "<string>" :statement)))))
+            (syntax-error () (.compile-string* code "<string>" :statement))))
+        (dict main-module-dict*))
     (unwind-protect
-         (eval.eval-code* code-ptr *py-main-module-dict* *py-main-module-dict*)
+         (eval.eval-code* code-ptr dict dict)
       (.dec-ref code-ptr))))
 
 (defmethod run* ((file pathname))
