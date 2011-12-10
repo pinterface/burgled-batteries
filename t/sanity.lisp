@@ -19,3 +19,10 @@
                     ()
                     "Python type ~S is not stringified as a type."
                     type-var)))
+
+(let ((nums (alexandria:shuffle (list 1 2 3 4 5 6 7 8 9 10))))
+  (burgled-batteries::with-cpython-pointer (min-fn (burgled-batteries:run* "min"))
+    (assert (= (apply #'burgled-batteries:apply min-fn nums)
+               (apply #'min nums))
+            ()
+            "Something seems to be wrong with APPLY.  Have types been switched again?")))
