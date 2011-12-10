@@ -12,12 +12,12 @@
   (.finalize))
 
 (defun import (name)
-  (let ((p (position #\. name))
-        (dict main-module-dict*))
-    (let ((m (import.import-module-ex* name dict dict (cffi:null-pointer))))
-      (unwind-protect
-	   (object.set-attr-string main-module* (if p (subseq name 0 p) name) m)
-	(.dec-ref m)))))
+  "Imports a Python module into the current namespace.  Should be equivalent
+to (run \"import NAME\")."
+  (let ((m (import.import* name)))
+    (unwind-protect
+         (object.set-attr-string main-module* (subseq name 0 (position #\. name)) m)
+      (.dec-ref m))))
 
 (defgeneric run* (thing)
   (:documentation "Runs some code.  When given a string, tries to interpret that string as if it were Python code.  Given a pathname, runs that file.  Returns a pointer."))
