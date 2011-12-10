@@ -62,6 +62,15 @@
         (t (.dec-ref pyfunc)
            (error "The Python function ~S does not appear to exist." python-name))))))
 
+(defun translate-python-name (name)
+  (intern (string-upcase name)))
+
+(defun parse-name (name)
+  (let* ((names (ensure-list name))
+         (python-name (first names))
+         (lisp-name (or (second names) (translate-python-name python-name))))
+    (values python-name lisp-name)))
+
 ;; FIXME: support for optional and keyword arguments undoubtedly needs to be improved
 (defmacro defpyfun (names args)
   "Defines a Lisp function which calls a Python function.  If the Python
@@ -71,13 +80,11 @@ docstring as well.
 Note that the Python interpreter must have been started and done any necessary
 imports for this macro to expand successfully."
   (with-refcnt-barrier
-    (let* ((names (ensure-list names))
-           (python-name (first names))
-           (lisp-name (or (second names) (intern (string-upcase python-name))))
-           (pyfunc (%get-function python-name)))
+    (multiple-value-bind (python-name lisp-name) (parse-name names)
       (multiple-value-bind (required optional rest keywords) (parse-ordinary-lambda-list args)
         (declare (ignore rest))
-        (let* ((docstring (object.get-attr-string pyfunc "__doc__")))
+        (let* ((pyfunc (%get-function python-name))
+               (docstring (object.get-attr-string pyfunc "__doc__")))
           (with-unique-names (pyfunc)
             `(defun ,lisp-name ,args
                ,@(when (stringp docstring) `(,docstring))
@@ -86,12 +93,15 @@ imports for this macro to expand successfully."
                    (object.call-object ,pyfunc (list ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords))))))))))))
 
 ;; FIXME: nonsensical for translated values
-(defmacro defpyslot (name &optional lisp-name)
-  `(defun ,(intern (string-upcase (or lisp-name name))) (obj)
-     (object.get-attr-string obj ,name)))
+(defmacro defpyslot (names)
+  (multiple-value-bind (python-name lisp-name) (parse-name names)
+    `(defun ,lisp-name (obj)
+       (object.get-attr-string obj ,python-name))))
 
-(defmacro defpymethod (name &optional lisp-name)
-  `(defun ,(intern (string-upcase (or lisp-name name))) (obj &rest args)
-     (object.call-object
-      (object.get-attr-string obj ,name)
-      (apply #'vector args))))
+(defmacro defpymethod (names)
+  (multiple-value-bind (python-name lisp-name) (parse-name names)
+    `(defun ,lisp-name (obj &rest args)
+       (let ((ptr (object.get-attr-string* obj ,python-name)))
+         (unwind-protect
+              (object.call-object ptr args)
+           (.dec-ref ptr))))))
