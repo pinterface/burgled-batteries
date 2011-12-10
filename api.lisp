@@ -11,30 +11,33 @@
 (defun shutdown-python ()
   (.finalize))
 
+(defmacro with-cpython-pointer ((var-or-vars form) &body body)
+  (let ((vars (ensure-list var-or-vars)))
+    `(multiple-value-bind ,vars ,form
+       (unwind-protect
+            (progn ,@body)
+         ,@(loop :for var :in vars :collect `(.dec-ref ,var))))))
+
 (defun import (name)
   "Imports a Python module into the current namespace.  Should be equivalent
 to (run \"import NAME\")."
-  (let ((m (import.import* name)))
-    (unwind-protect
-         (object.set-attr-string main-module* (subseq name 0 (position #\. name)) m)
-      (.dec-ref m))))
+  (with-cpython-pointer (module (import.import* name))
+    (object.set-attr-string main-module* (subseq name 0 (position #\. name)) module)))
 
 (defgeneric run* (thing)
   (:documentation "Runs some code.  When given a string, tries to interpret that string as if it were Python code.  Given a pathname, runs that file.  Returns a pointer."))
 
 (defmethod run* ((code string))
-  (let ((code-ptr
-          ;; Python's eval doesn't return a value for statements, but only for
-          ;; expressions.  So we first attempt to parse code as an expression
-          ;; (allowing us to get a value), and only if that fails do we fall
-          ;; back to a statement (for which no value will be returned).
-          (handler-case
-              (.compile-string* code "<string>" :expression)
-            (syntax-error () (.compile-string* code "<string>" :statement))))
-        (dict main-module-dict*))
-    (unwind-protect
-         (eval.eval-code* code-ptr dict dict)
-      (.dec-ref code-ptr))))
+  (with-cpython-pointer
+      (code-ptr
+       ;; Python's eval doesn't return a value for statements, but only for
+       ;; expressions.  So we first attempt to parse code as an expression
+       ;; (allowing us to get a value), and only if that fails do we fall back
+       ;; to a statement (for which no value will be returned).
+       (handler-case
+           (.compile-string* code "<string>" :expression)
+         (syntax-error () (.compile-string* code "<string>" :statement))))
+    (eval.eval-code* code-ptr main-module-dict* main-module-dict*)))
 
 (defmethod run* ((file pathname))
   (error "Sorry, running a Python file is not yet supported."))
@@ -47,12 +50,6 @@ to (run \"import NAME\")."
 
 (defun apply (func &rest args)
   (object.call-object func args))
-
-(defmacro with-decrements (pointer-vars &body body)
-  `(unwind-protect
-        (progn ,@body)
-     (progn
-       ,@(mapcar (lambda (x) `(.dec-ref ,x)) pointer-vars))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun %get-function (python-name)
@@ -88,9 +85,8 @@ imports for this macro to expand successfully."
           (with-unique-names (pyfunc)
             `(defun ,lisp-name ,args
                ,@(when (stringp docstring) `(,docstring))
-               (let ((,pyfunc (%get-function ,python-name)))
-                 (with-decrements (,pyfunc)
-                   (object.call-object ,pyfunc (list ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords))))))))))))
+               (with-cpython-pointer (,pyfunc (%get-function ,python-name))
+                 (object.call-object ,pyfunc (list ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords)))))))))))
 
 ;; FIXME: nonsensical for translated values
 (defmacro defpyslot (names)
@@ -101,7 +97,5 @@ imports for this macro to expand successfully."
 (defmacro defpymethod (names)
   (multiple-value-bind (python-name lisp-name) (parse-name names)
     `(defun ,lisp-name (obj &rest args)
-       (let ((ptr (object.get-attr-string* obj ,python-name)))
-         (unwind-protect
-              (object.call-object ptr args)
-           (.dec-ref ptr))))))
+       (with-cpython-pointer (ptr (object.get-attr-string* obj ,python-name))
+         (object.call-object ptr args)))))
