@@ -46,7 +46,7 @@
   (cffi:convert-from-foreign (run* thing) 'cpython::object!))
 
 (defun apply (func &rest args)
-  (object.call-object func (cl:apply #'vector args)))
+  (object.call-object func args))
 
 (defmacro with-decrements (pointer-vars &body body)
   `(unwind-protect
