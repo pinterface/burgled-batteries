@@ -79,14 +79,14 @@ imports for this macro to expand successfully."
   (with-refcnt-barrier
     (multiple-value-bind (python-name lisp-name) (parse-name names)
       (multiple-value-bind (required optional rest keywords) (parse-ordinary-lambda-list args)
-        (declare (ignore rest))
+        (when (and rest keywords) (error "&rest with &key is not currently supported."))
         (let* ((pyfunc (%get-function python-name))
                (docstring (object.get-attr-string pyfunc "__doc__")))
           (with-unique-names (pyfunc)
             `(defun ,lisp-name ,args
                ,@(when (stringp docstring) `(,docstring))
                (with-cpython-pointer (,pyfunc (%get-function ,python-name))
-                 (object.call-object ,pyfunc (list ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords)))))))))))
+                 (object.call-object ,pyfunc (list* ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords) ,rest))))))))))
 
 ;; FIXME: nonsensical for translated values
 (defmacro defpyslot (names)

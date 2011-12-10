@@ -26,3 +26,9 @@
                (apply #'min nums))
             ()
             "Something seems to be wrong with APPLY.  Have types been switched again?")))
+
+(burgled-batteries:defpyfun ("max" pymax) (&rest args))
+(let ((nums (alexandria:shuffle (list 1 2 3 4 5 6 7 8 9 10))))
+  (assert (= (pymax nums) (apply #'max nums))
+          ()
+          "Either MAX is broken or DEFPYFUN is having issues."))
