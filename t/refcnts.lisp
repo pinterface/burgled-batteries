@@ -23,6 +23,33 @@
                   (ensure-unchanged-refcnt (format nil "(~A, ~A, ~A)" code code code))
                   (ensure-unchanged-refcnt (format nil "dict(a=~A, b=~A, c=~A)" code code code)))))))
 
+;; unknown translations
+(python.cffi:with-refcnt-barrier
+  (burgled-batteries:run "import datetime")
+  (burgled-batteries:run "tmp = datetime.date.today()")
+  (let* ((ptr (cpython::dict.get-item* burgled-batteries::main-module-dict* "tmp"))
+         (orig-refcnt (cpython::%object.refcnt ptr)))
+    (loop :for (object code) :in `((,ptr "tmp"))
+          :do (symbol-macrolet ((current-refcnt (python.cffi::%object.refcnt object)))
+                (let ((orig-refcnt current-refcnt))
+                  (flet ((ensure-unchanged-refcnt (python-code)
+                           (cpython:with-refcnt-barrier
+                             (burgled-batteries:run python-code))
+                           (assert (= orig-refcnt current-refcnt) ()
+                                   "Reference count for ~S was ~A by ~S"
+                                   code
+                                   (if (> orig-refcnt current-refcnt) "decreased" "increased")
+                                   python-code)
+                           (format t ".")))
+                    (ensure-unchanged-refcnt code)
+                    (ensure-unchanged-refcnt (format nil "[~A, ~A, ~A]" code code code))
+                    (ensure-unchanged-refcnt (format nil "(~A, ~A, ~A)" code code code))
+                    (ensure-unchanged-refcnt (format nil "dict(a=~A, b=~A, c=~A)" code code code))))))
+    (assert (= orig-refcnt (cpython::%object.refcnt ptr))
+            ()
+            "Reference count was changed ~D overall."
+            (- orig-refcnt (cpython::%object.refcnt ptr)))))
+
 ;; Inspired by (read: almost entirely copied from) #'VOODOO in trivial-garbage's
 ;; tests.
 (defun voodoo (expr)

@@ -625,7 +625,8 @@ platform and compiler options."
 (defvar *in-barrier*)
 
 (defclass python-reference ()
-  ((pointer :initarg :pointer :reader python-reference-pointer))
+  ((pointer :initarg :pointer :reader python-reference-pointer)
+   (type :initarg :type :reader python-reference-type))
   (:documentation "A wrapper around a :POINTER, for use in refcnt barriers to ensure pointers do not escape their extent."))
 
 ;; Ensure nobody else has to care about the translations
@@ -636,8 +637,14 @@ platform and compiler options."
 (defmethod free-translated-object ((value python-reference) type param)
   (free-translated-object (python-reference-pointer value) type param))
 
+(defun make-barrier-reference (pointer type)
+  (let ((ref (make-instance 'python-reference :pointer pointer :type type)))
+    (push ref *in-barrier*)
+    ref))
+
 (defun invalidate-reference (reference)
-  (.dec-ref (python-reference-pointer reference))
+  (unless (borrowed-reference-p (python-reference-type reference))
+    (.dec-ref (python-reference-pointer reference)))
   (slot-makunbound reference 'pointer))
 
 (defun resignal-and-invalidate (c)

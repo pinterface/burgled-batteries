@@ -89,10 +89,7 @@
              :finally (cl:return
                         (cond
                           (*use-finalizers* (finalize-pointer value type))
-                          ((boundp '*in-barrier*)
-                           (let ((value (make-instance 'python-reference :pointer value)))
-                             (push value *in-barrier*)
-                             value))
+                          ((boundp '*in-barrier*) (make-barrier-reference value type))
                           (t value))))))))
 
 ;; Avoid recursion within object translator
