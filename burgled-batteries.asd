@@ -1,13 +1,13 @@
 ;;; burgled-batteries.asd --- ASDF system definition for burgled-batteries
 ;;;
-;;; License ::
-;;; * LGPL: Portions copyright Dmitri Hrapof <hrapof@common-lisp.ru>
-;;;   burgled-batteries began life as patches to pyffi.  The parts of pyffi
-;;;   which remain (mostly in api.lisp) are copyright Dmitri Hrapof and licensed
-;;;   under the LGPL.
-;;; * MIT: Anything by pinterface <pix@kepibu.org>
-;;;   Anything I've written which isn't a trivial modification of something from
-;;;   pyffi is licensed under the MIT license.
+;;; License Notes ::
+;;;   burgled-batteries began life as patches to pyffi by Dmitri Hrapof
+;;;   <hrapof@common-lisp.ru>, which was LGPL.  Because there is essentially
+;;;   nothing left of pyffi, I felt it acceptable to relicense to something
+;;;   better suited to the Lisp ecosystem.  However, I am not a lawyer nor
+;;;   versed in the intricasies of copyright law, so include this warning that
+;;;   you may avoid the difficulties posed by the LGPL if you feel my opinion is
+;;;   unwarranted or misinformed.
 
 #-burgled-batteries.guess-not-grovel
 (cl:eval-when (:load-toplevel :execute)
@@ -22,7 +22,7 @@
     :name "burgled-batteries"
     :author (:original "Dmitri Hrapof <hrapof@common-lisp.ru>"
              :current "pinterface <pix@kepibu.org>")
-    :licence "LGPL + MIT"
+    :license "MIT"
     :description "Lisp-Python interface"
     :long-description "
 This system provides support for embedding Python into Common Lisp via CFFI.
