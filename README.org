@@ -1,0 +1,133 @@
+#+TITLE: burgled-batteries: A Common Lisp / Python Bridge
+
+burgled-batteries provides a shim between Python (specifically, the CPython
+implementation of Python) and Common Lisp.
+
+* Synopsis
+
+#+begin_src lisp
+  (asdf:load-system "burgled-batteries")
+  (in-package #:burgled-batteries)
+  (startup-python)
+  
+  (run "1+1") ; => 2
+  
+  (import "feedparser")
+  (defpyfun "feedparser.parse" (thing))
+  (documentation 'feedparser.parse 'function)
+  ; => "Parse a feed from a URL, file, stream, or string"
+  (feedparser.parse "http://pinterface.livejournal.com/data/atom")
+  ; => #<HASH-TABLE>
+  
+  (shutdown-python)
+#+end_src
+
+* Why burgled-batteries
+CLPython is great when it works.  However, if you're using a low-resource
+computer—perhaps an underpowered VPS, or a Linux box salvaged from the 90s—, or
+need access to a Python library written in C, or there's a bug and you can't be
+bothered to narrow it down to a small test case, CLPython can't help you.  Two
+out of three of those are more your problem than CLPython's, but hey, I'm not
+here to judge.
+
+While a number of other Python-by-FFI options exist, burgled-batteries aims for
+a CLPython-esque level of integration.  In other words, *deep* integration.  You
+shouldn't have to care that the library you're using was written in Python—it
+should Just Work.
+
+Certainly, b-b is not there yet.  It may never be there completely.  But we'll
+/try/, dagnabbit.
+
+* Basic Type Mapping
+Python objects are converted to a Lisp object where possible.  Where a
+conversion is unknown, a pointer to the CPython object is returned (or, if
+inside a refcnt barrier, a wrapper around the pointer which will become invalid
+upon exiting the barrier).  In general, this mapping follows the lead of
+CLPython.
+
+| Python Type   | Lisp Type         |
+|---------------+-------------------|
+| Boolean       | (member T NIL)    |
+| Integer, Long | Integer           |
+| Float         | Double-float      |
+| Dict          | Hashtable         |
+| Unicode       | String            |
+| List          | Adjustable vector |
+| Tuple         | List              |
+| Complex       | Complex           |
+| ByteArray     | Octet vector      |
+| Exception     | Condition         |
+| <Unknown>     | <pointer>         |
+
+* CPython FFI
+Anything dealing with the CPython API can be found in the PYTHON.CFFI package.
+See the docstring for that package for more information, as well as Python's [[http://docs.python.org/c-api/][C API]].
+
+* Calling Python from Lisp
+ * IMPORT   :: Equivalent to "import <foo>" in Python.
+ * RUN      :: Mimicks the RUN function from CLPython.
+ * DEFPYFUN :: Similar to CFFI's DEFCFUN—defines a Lisp function which calls a
+               Python function.  Ideally, this will eventually be obviated by
+               something which uses Python introspection to figure out an
+               apropriate argument list so you don't have to, but it'll get you
+               going for now.
+
+* Calling Lisp from Python
+Not yet supported, but see ffi-callbacks.lisp for some experimentation and notes
+along those lines.
+
+* Avoid the Hassle of Reference Counts
+Because dealing with reference counts is Just No Fun and Not Lispy At All, as
+well as Inevitable—at some point there will be an object for which no
+translation is known—, b-b provides multiple options to avoid dealing with
+refcnts for those untranslatable pointers.  See the macro
+CPYTHON:WITH-UNKNOWN-TRANSLATION-POLICY.
+
+Note that this policy also also affects the EXCEPTION-* slots of
+PYTHON-CONDITION, and so they may or may not be available for inspection
+depending on the translation policy in effect and the manner of handling.
+
+For example, under the default policy of :DISCARD, you would see something like:
+#+begin_src lisp
+(defun reveal-effect (c)
+  (format t "~A~%" (slot-value c 'exception-type)))
+
+(handler-bind ((python-condition #'reveal-effect))
+  (burgled-batteries:run "1/0"))
+; prints #.(SB-SYS:INT-SAP #X?????)
+
+(handler-case (burgled-batteries:run "1/0")
+  (python-condition (c) (reveal-effect c)))
+; prints NIL
+#+end_src
+
+If you'd like access to Python types without a known translation, :BARRIER
+or :FINALIZE are highly recommended over :PASS-THROUGH.  They do, however, come
+with [[http://pinterface.livejournal.com/40934.html][some caveats]] which you should be aware of.
+* To Do
+ * Output redirection
+ * Callbacks
+ * Whole-module import (into own package?)
+ * Python object <-> CLOS mappings
+ * Provide facilities for user code to define own Lisp-Python mappings
+ * Better tests that can be run all at once
+ * Test on something other than SBCL
+ * Pathname support (requires FILE* support)
+
+* Prior Art / Other Solutions
+ * [[http://common-lisp.net/project/python-on-lisp/][Python-on-Lisp]] :: It was a good try back in 2006, but unfortunately has
+   experienced significant bitrot.  It did manage to provide callbacks and
+   writing to Lisp streams, however (both of which are still on b-b's TODO
+   list).  Very handy features!
+ * [[http://www2s.biglobe.ne.jp/~niitsuma/pythononlispex.html][pythononlisp-ex]] :: A fork of Python-on-Lisp which shimmies things between
+   Lisp and Python using JSON.  As you might expect, this falls down as soon as
+   you hit something which can't be represented in JSON, which covers quite a
+   lot of types.
+ * [[http://www.cliki.net/Pyffi][Pyffi]] :: A more streamlined, and less featureful, Python FFI which came after
+   PoL.  Technically, burgled-batteries began life as some patches to Pyffi
+   because it seemed to be the best place to start.  (Almost nothing of Pyffi
+   remains.)
+ * [[http://common-lisp.net/project/clpython/][CLPython]] :: A very fine Python compiler written in Common Lisp.  It requires
+   a somewhat beefier machine than CPython.  Unfortunately, it doesn't work with
+   Python libraries written in C (e.g., numpy), and so is unable to handle the
+   full gamut of Python libraries one might wish to borrow.
