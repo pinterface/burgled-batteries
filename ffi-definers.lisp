@@ -657,19 +657,11 @@ but at least we tried."
 
 (defun %get-python-inheritance-tree (type)
   "Returns a list of class names in the order they should be consulted according to Python's class heirarchy rules."
-  (flet ((supers (type) (coerce (%object.get-attr-string type "__bases__") 'cl:list))
-         (name   (type) (%object.get-attr-string type "__name__")))
-    (let* ((tree (supers type))
-           (tail (last tree)))
-      ;; Naggum trick (dolist would be shorter, but SBCL CDRs too early)
-      ;; see <3247805927894274@naggum.no>
-      (do ((rest tree (cdr rest)))
-          ((endp rest))
-        (setf (cdr tail) (supers (car rest))
-              tail (last tail)))
-      (prog1 (delete-duplicates (mapcar #'name tree) :test #'string= :from-end t)
-        ;; Don't leak references
-        (mapcar #'.dec-ref tree)))))
+  (with-unknown-translation-policy (:barrier)
+    (flet ((name (type) (%object.get-attr-string type "__name__")))
+      (let ((tree (%type.mro type)))
+        ;; first item in tree is given type, last is object
+        (mapcar #'name (butlast (rest tree)))))))
 
 (defun %ensure-function (form)
   (cond
