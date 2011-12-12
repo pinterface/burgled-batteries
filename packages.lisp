@@ -6,6 +6,7 @@
   (:export #:.initialize
            #:.finalize
            #:import.add-module
+           #:with-unknown-translation-policy
            #:with-refcnt-barrier
            #:.dec-ref
            #:.inc-ref

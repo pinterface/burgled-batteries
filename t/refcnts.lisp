@@ -56,7 +56,7 @@
   (funcall (compile nil `(lambda () (eval (read-from-string (format nil "~S" ',expr))))))
   (values))
 
-(python.cffi::with-pointer-finalizers
+(cpython:with-unknown-translation-policy (:finalize)
   (burgled-batteries:import "time")
   (burgled-batteries:run "v = time.gmtime()")
   (let* ((code "v")

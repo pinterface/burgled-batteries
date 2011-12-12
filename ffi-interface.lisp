@@ -86,11 +86,7 @@
              ;; This should probably occur in T-F-F for F-P-T, but then we
              ;; have multiple values and recursion from the above T-F-F to
              ;; deal with, and that would be much less straightforward.
-             :finally (cl:return
-                        (cond
-                          (*use-finalizers* (finalize-pointer value type))
-                          ((boundp '*in-barrier*) (make-barrier-reference value type))
-                          (t value))))))))
+             :finally (cl:return (translate-unknown-pointer value type)))))))
 
 ;; Avoid recursion within object translator
 (defmethod foreign-is-convertable-to-type-p (value (type foreign-python-object-type))
