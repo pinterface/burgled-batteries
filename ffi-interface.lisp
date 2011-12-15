@@ -26,7 +26,9 @@
   (refcnt ssize-t)
   (type :pointer type))
 
-(defun %object.type-check-exact (o type) (pointer-eq (%object.type* o) type))
+(defun %object.type-check-exact (o type)
+  (and (not (null-pointer-p o))
+       (pointer-eq (%object.type* o) type)))
 
 (defcstruct* %var (%object)
   (size ssize-t))
@@ -628,8 +630,9 @@
 (defpyfun "PyObject_Not"    boolean! ((o object)))
 (defpyfun "PyObject_Type" object! ((o object)))
 (defpyfun "PyObject_TypeCheck" :boolean ((o object) (type type))
-  (:implementation (if (or (%object.type-check-exact o type)
-                           (type.is-subtype (%object.type* o) type))
+  (:implementation (if (and (not (null-pointer-p o))
+                            (or (%object.type-check-exact o type)
+                                (type.is-subtype (%object.type* o) type)))
                        1 0)))
 (defpyfun "PyObject_Length" ssize-t! ((o object)))
 (defpyfun "PyObject_Size"   ssize-t! ((o object)))
@@ -688,7 +691,19 @@
 
 ;;; Sequence Protocol
 (in-python-docs "/c-api/sequence.html")
-(defpyfun "PySequence_Check" :boolean ((o object)))
+(defpyfun ("PySequence_Check" %sequence.check) :boolean ((o object)))
+(defun sequence.check (o)
+  ;; FIXME: rather than doing this horribly awkward read-time eval thing, push
+  ;; some sort of wrapping facility into defpyfun?  Though we'd only use it for
+  ;; this and the below byte-array.as-string, so maybe not worth the extra
+  ;; complication in defpyfun.  (But...maybe worth its own defpyfun-wrapper?)
+  #.(with-unique-names (o)
+      (cffi::translate-objects (cl:list o) '(o)
+                               '(object) :void
+                               `(and (not (null-pointer-p ,o))
+                                     (%sequence.check ,o)))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (export 'sequence.check))
 (defpyfun "PySequence_Size"   ssize-t! ((o object)))
 (defpyfun "PySequence_Length" ssize-t! ((o object)))
 (defpyfun "PySequence_Concat" object! ((o1 object) (o2 object)))
@@ -743,10 +758,10 @@
 (in-python-docs "/c-api/iter.html")
 (defpyfun "PyIter_Check" :boolean ((o object))
   (:implementation
-   (let ((otype (%object.type* o)))
-     (if (and (type.has-feature otype :have-iter)
-              (not (null-pointer-p (%type.iternext o))))
-         1 0))))
+   (if (and (not (null-pointer-p o))
+            (type.has-feature (%object.type* o) :have-iter)
+            (not (null-pointer-p (%type.iternext o))))
+       1 0)))
 (defpyfun "PyIter_Next"  object?  ((o object)))
 
 ;;; Old Buffer Protocol (Skipped)
