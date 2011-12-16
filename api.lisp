@@ -83,10 +83,15 @@ imports for this macro to expand successfully."
         (let* ((pyfunc (%get-function python-name))
                (docstring (object.get-attr-string pyfunc "__doc__")))
           (with-unique-names (pyfunc)
-            `(defun ,lisp-name ,args
-               ,@(when (stringp docstring) `(,docstring))
-               (with-cpython-pointer (,pyfunc (%get-function ,python-name))
-                 (object.call-object ,pyfunc (list* ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords) ,rest))))))))))
+            (flet ((make-defun (name call-fn)
+                     `(defun ,name ,args
+                        ,@(when (stringp docstring) `(,docstring))
+                        (with-cpython-pointer (,pyfunc (%get-function ,python-name))
+                          (,call-fn ,pyfunc (list* ,@required ,@(mapcar #'first optional) ,@(mapcar #'cadar keywords) ,rest))))))
+              `(progn
+                 ,(make-defun lisp-name 'object.call-object)
+                 ,(make-defun (symbolicate lisp-name '*) 'object.call-object*)
+                 ',lisp-name))))))))
 
 ;; FIXME: nonsensical for translated values
 (defmacro defpyslot (names)
