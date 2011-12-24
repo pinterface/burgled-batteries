@@ -865,12 +865,14 @@
 (defpyfun "PyByteArray_FromStringAndSize" byte-array! ((string octet-array) (len ssize-t)))
 (defpyfun "PyByteArray_Concat" byte-array! ((a object) (b object)))
 (defpyfun "PyByteArray_Size" ssize-t ((bytearray object)))
-(defpyfun ("PyByteArray_AsString" %byte-array.as-string) octet-array ((bytearray object)))
+(defpyfun ("PyByteArray_AsString" %byte-array.as-string) octet-array ((bytearray byte-array)))
 (defpyfun "PyByteArray_Resize" :int ((bytearray object) (len ssize-t)))
 
 ;; We need the size to correctly convert a Python byte-array to a lisp array,
 ;; but can't get at it directly from within translate-from-foreign.
 (defun byte-array.as-string (bytearray)
+  ;; FIXME: if bytearray is a Lisp object, it will get translated twice, once
+  ;;        for .size and again for .as-string
   (let ((*byte-array.size* (byte-array.size bytearray)))
     (declare (special *byte-array.size*))
     (%byte-array.as-string bytearray)))
