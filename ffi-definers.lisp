@@ -435,7 +435,20 @@ platform and compiler options."
 
 (defmethod translate-to-foreign :around (value (type foreign-python-type))
   (cond
-    ((pointerp value) (values value nil)) ; assume already foreign
+    ;; Raw pointers are already foreign.  Those intentionally dealing with raw
+    ;; pointers get to also deal with the joys of reference counting and stolen
+    ;; references.  (NOTE: this will cause trouble in :pass-through mode.)
+    ((pointerp value) (values value nil))
+    ;; fenced-p and wrapped-p are like raw pointers in that their reference
+    ;; counts should not be decremented.  Note, however, that because they're
+    ;; managed we need to increment their reference counts when the reference is
+    ;; stolen to avoid a double-decrement.
+    ((fenced-p value)
+     (when (stolen-reference-p type) (.inc-ref (fenced-value value)))
+     (values (call-next-method) nil))
+    ((wrapped-p value)
+     (when (stolen-reference-p type) (.inc-ref (wrapped-value value)))
+     (values (call-next-method) nil))
     (t (values (call-next-method)
                (not (stolen-reference-p type))))))
 
