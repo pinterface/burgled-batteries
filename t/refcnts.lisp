@@ -85,3 +85,34 @@
       (tg:gc :full t))
     ;; Mostly this is just here to ensure wrapped doesn't get GCed during the tests
     (cpython::%object.refcnt (cpython::wrapped-value wrapped))))
+
+;; unknown translations with stolen references
+(cpython:with-refcnt-barrier
+  (burgled-batteries:run "import datetime")
+  (burgled-batteries:run "tmp = datetime.date.today()")
+  (let* ((ptr (cpython::dict.get-item* burgled-batteries::main-module-dict* "tmp"))
+         (orig-refcnt (cpython::%object.refcnt ptr)))
+    (loop :for (object code) :in `((,ptr "tmp"))
+          :do (symbol-macrolet ((current-refcnt (python.cffi::%object.refcnt object)))
+                (let* ((orig-refcnt current-refcnt)
+                       (tuple* (burgled-batteries:run* "(1, 2, 3, 4)")))
+                  (flet ((ensure-unchanged-refcnt ()
+                           (assert (= orig-refcnt current-refcnt) ()
+                                   "Reference count for ~S was ~A"
+                                   code
+                                   (if (> orig-refcnt current-refcnt) "decreased" "increased")
+                                   )
+                           (format t ".")))
+                    (ensure-unchanged-refcnt)
+                    (cpython:with-unknown-translation-policy (:barrier)
+                      (cpython:tuple.set-item tuple* 0 (burgled-batteries:run "tmp")))
+                    (voodoo
+                     `(cpython:with-unknown-translation-policy (:finalize)
+                        (cpython:tuple.set-item ,tuple* 1 (burgled-batteries:run "tmp"))))
+                    (voodoo `(tg:gc :full t))
+                    (cpython:.dec-ref tuple*)
+                    (ensure-unchanged-refcnt)))))
+    (assert (= orig-refcnt (cpython::%object.refcnt ptr))
+            ()
+            "Reference count was changed ~D overall."
+            (- orig-refcnt (cpython::%object.refcnt ptr)))))
