@@ -567,7 +567,7 @@ but at least we tried."
     `((let ((*barrier-finalizers* (cl:list)))
         (unwind-protect
              (progn ,@body-forms)
-          (mapcar #'funcall *barrier-finalizers*))))))
+          (mapc #'funcall *barrier-finalizers*))))))
 
 ;; Temporary bit for compatibility with prior code
 (defmacro with-refcnt-barrier (&body body)
