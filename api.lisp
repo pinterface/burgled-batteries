@@ -18,14 +18,27 @@
             (progn ,@body)
          ,@(loop :for var :in vars :collect `(.dec-ref ,var))))))
 
+(defun warn-if-uninitialized ()
+  (unless (.is-initialized)
+    (restart-case
+        (error 'simple-error :format-control "The Python interpreter has not yet been initialized." :format-arguments nil)
+      (continue ()
+        :report "Initialize cpython and continue."
+        :test (lambda (c) (declare (ignore c)) (not (.is-initialized)))
+        (startup-python)))))
+
 (defun import (name)
   "Imports a Python module into the current namespace.  Should be equivalent
 to (run \"import NAME\")."
+  (warn-if-uninitialized)
   (with-cpython-pointer (module (import.import* name))
     (object.set-attr-string main-module* (subseq name 0 (position #\. name)) module)))
 
 (defgeneric run* (thing)
   (:documentation "Runs some code.  When given a string, tries to interpret that string as if it were Python code.  Given a pathname, runs that file.  Returns a pointer."))
+
+(defmethod run* :before (thing)
+  (warn-if-uninitialized))
 
 (defmethod run* ((code string))
   (with-cpython-pointer
@@ -49,6 +62,7 @@ to (run \"import NAME\")."
   (cffi:convert-from-foreign (run* thing) 'cpython::object!))
 
 (defun apply (func &rest args)
+  (warn-if-uninitialized)
   (object.call-object func args))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -76,6 +90,7 @@ docstring as well.
 
 Note that the Python interpreter must have been started and done any necessary
 imports for this macro to expand successfully."
+  (warn-if-uninitialized)
   (with-refcnt-barrier
     (multiple-value-bind (python-name lisp-name) (parse-name names)
       (multiple-value-bind (required optional rest keywords) (parse-ordinary-lambda-list args)
@@ -95,11 +110,13 @@ imports for this macro to expand successfully."
 
 ;; FIXME: nonsensical for translated values
 (defmacro defpyslot (names)
+  (warn-if-uninitialized)
   (multiple-value-bind (python-name lisp-name) (parse-name names)
     `(defun ,lisp-name (obj)
        (object.get-attr-string obj ,python-name))))
 
 (defmacro defpymethod (names)
+  (warn-if-uninitialized)
   (multiple-value-bind (python-name lisp-name) (parse-name names)
     `(defun ,lisp-name (obj &rest args)
        (with-cpython-pointer (ptr (object.get-attr-string* obj ,python-name))
