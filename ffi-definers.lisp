@@ -769,7 +769,9 @@ but at least we tried."
                    :for accessor = (symbolicate conc-name field)
                    :collect `(declaim (inline ,accessor (setf ,accessor))))
            ,@(cffi::generate-struct-accessors name conc-name
-                                              (mapcar #'car untranslated-fields)))
+                                              (mapcar #'car untranslated-fields))
+           (define-parse-method ,name ()
+             (cffi::parse-deprecated-struct-type ',name :struct)))
          ;; CFFI expects types to exist during compilation.  Because they might
          ;; be forward-referenced, we push the translating slots and accessors
          ;; into FINALIZE-CSTRUCTS, which should be called after all the types
@@ -782,7 +784,7 @@ but at least we tried."
                               :do (setf (gethash field (cffi::slots ptype))
                                         (cffi::make-struct-slot field offset type 1))))
                       ,@(cffi::generate-struct-accessors name conc-name (mapcar #'car translated-fields)))))
-         ',name))))
+         '(:struct ,name)))))
 
 (defmacro finalize-cstructs ()
   (prog1 `(eval-when (:compile-toplevel :load-toplevel :execute)
