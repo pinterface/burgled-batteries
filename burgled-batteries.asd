@@ -44,7 +44,6 @@ in #p\"grovel-include-dir.lisp\".
     :serial t
     :components
     ((:file "packages")
-     #-burgled-batteries.guess-not-grovel (:file "grovel-bitfields")
      #-burgled-batteries.guess-not-grovel (:file "grovel-include-dir")
      #-burgled-batteries.guess-not-grovel (grovel-file "grovel")
      #+burgled-batteries.guess-not-grovel (:file "grovel-guess")
