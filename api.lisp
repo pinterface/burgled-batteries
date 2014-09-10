@@ -30,9 +30,12 @@
 (defun import (name)
   "Imports a Python module into the current namespace.  Should be equivalent
 to (run \"import NAME\")."
-  (warn-if-uninitialized)
-  (with-cpython-pointer (module (import.import* name))
-    (object.set-attr-string main-module* (subseq name 0 (position #\. name)) module)))
+  (let ((name (if (symbolp name)
+		  (string-downcase (string name))
+		  name)))
+    (warn-if-uninitialized)
+    (with-cpython-pointer (module (import.import* name))
+      (object.set-attr-string main-module* (subseq name 0 (position #\. name)) module))))
 
 (defgeneric run* (thing)
   (:documentation "Runs some code.  When given a string, tries to interpret that string as if it were Python code.  Given a pathname, runs that file.  Returns a pointer."))
