@@ -46,3 +46,6 @@
   (.finalize))
 
 #+(or) (burgled-batteries:run "1+")
+
+(defmethod print-object ((condition base-exception) stream)
+  (format stream "~A" (first (slot-value condition 'args))))
