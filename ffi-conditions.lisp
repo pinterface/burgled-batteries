@@ -48,4 +48,7 @@
 #+(or) (burgled-batteries:run "1+")
 
 (defmethod print-object ((condition base-exception) stream)
-  (format stream "~A" (first (slot-value condition 'args))))
+  (write (first (slot-value condition 'args)) :stream stream))
+
+(defmethod print-object ((condition environment-error) stream)
+  (write (slot-value condition 'strerror) :stream stream))
