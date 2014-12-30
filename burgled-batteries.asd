@@ -1,13 +1,4 @@
 ;;; burgled-batteries.asd --- ASDF system definition for burgled-batteries
-;;;
-;;; License Notes ::
-;;;   burgled-batteries began life as patches to pyffi by Dmitri Hrapof
-;;;   <hrapof@common-lisp.ru>, which was LGPL.  Because there is essentially
-;;;   nothing left of pyffi, I felt it acceptable to relicense to something
-;;;   better suited to the Lisp ecosystem.  However, I am not a lawyer nor
-;;;   versed in the intricasies of copyright law, so include this warning that
-;;;   you may avoid the difficulties posed by the LGPL if you feel my opinion is
-;;;   unwarranted or misinformed.
 
 #-burgled-batteries.guess-not-grovel
 (cl:eval-when (:load-toplevel :execute)
