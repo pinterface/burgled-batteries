@@ -18,6 +18,19 @@
             (progn ,@body)
          ,@(loop :for var :in vars :collect `(.dec-ref ,var))))))
 
+(defvar *python-interpreter* nil)
+
+(defun call-with-python (function)
+  (when (not *python-interpreter*)
+    (let ((*python-interpreter* t))
+      (.initialize)
+      (unwind-protect
+	   (funcall function)
+	(.finalize)))))
+
+(defmacro with-python (&body body)
+  `(call-with-python (lambda () ,@body)))
+
 (defun warn-if-uninitialized ()
   (unless (.is-initialized)
     (restart-case

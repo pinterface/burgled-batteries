@@ -72,4 +72,5 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
            #:apply
            #:defpyfun
            #:defpyslot
-           #:defpymethod))
+           #:defpymethod
+	   #:with-python))
