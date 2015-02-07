@@ -3,6 +3,22 @@
 burgled-batteries provides a shim between Python (specifically, the CPython
 implementation of Python) and Common Lisp.
 
+* Requirements
+
+  Requires python development package.
+  #+begin_src
+  sudo apt-get install python-dev
+  #+end_src 
+  on Ubuntu systems
+ 
+* Tests
+
+  #+begin_src
+  (asdf:test-system :burgled-batteries)
+  #+end_src
+
+  Has been tested to work on both SBCL and Clozure CL.
+
 * Synopsis
 
 #+begin_src lisp
@@ -110,8 +126,6 @@ with [[http://pinterface.livejournal.com/40934.html][some caveats]] which you sh
  * Whole-module import (into own package?)
  * Python object <-> CLOS mappings
  * Provide facilities for user code to define own Lisp-Python mappings
- * Better tests that can be run all at once
- * Test on something other than SBCL
  * Pathname support (requires FILE* support)
 
 * Prior Art / Other Solutions

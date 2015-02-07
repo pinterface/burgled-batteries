@@ -43,4 +43,5 @@ in #p\"grovel-include-dir.lisp\".
      (:file "ffi-interface")
      (:file "ffi-conditions")
      (:file "ffi-callbacks")
-     (:file "api")))
+     (:file "api"))
+    :in-order-to ((asdf:test-op (asdf:test-op :burgled-batteries-tests))))
