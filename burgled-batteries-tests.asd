@@ -16,4 +16,6 @@
   :serial t
   :depends-on (:burgled-batteries
 	       :lift
-	       :cl-quickcheck))
+	       :cl-quickcheck)
+  :perform (asdf:test-op (o c)
+			 (uiop:symbol-call :python-cffi.test :run-tests)))
