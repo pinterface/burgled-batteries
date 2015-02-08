@@ -45,4 +45,10 @@
 (eval-when (:compile-toplevel :load-toplevel)
   (.finalize))
 
+(defmethod print-object ((condition base-exception) stream)
+  (write (first (slot-value condition 'args)) :stream stream))
+
+(defmethod print-object ((condition environment-error) stream)
+  (write (slot-value condition 'strerror) :stream stream))
+
 #+(or) (burgled-batteries:run "1+")
