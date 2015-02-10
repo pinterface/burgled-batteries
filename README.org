@@ -105,6 +105,14 @@ If you'd like access to Python types without a known translation, :BARRIER
 or :FINALIZE are highly recommended over :PASS-THROUGH.  They do, however, come
 with [[http://pinterface.livejournal.com/40934.html][some caveats]] which you should be aware of.
 
+* Requirements
+
+Burgled-batteries links with C code, and accordingly requires the appropriate
+headers and library files.  On Debian-based systems, you can get these via:
+#+begin_src sh
+  sudo apt-get install python-dev
+#+end_src
+
 * Testing
 
 #+begin_src
