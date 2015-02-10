@@ -28,22 +28,24 @@
     (dotimes (i (random *size*) hash)
       (setf (gethash (a-string-without-nuls) hash) i))))
 
-(quickcheck
-  ;; See the PyString warning in ffi-interface about known-issues not covered by
-  ;; quickcheck.
-  (for-all ((v #'a-string-without-nuls))
-    (is= v (python.cffi:string.from-string v)))
-  (for-all ((v #'an-octet-array))
-    (is equalp v (python.cffi:byte-array.from-string-and-size v (length v))))
-  (for-all ((v #'a-unicode-string))
-    (is= v (python.cffi:unicode.from-unicode v (length v))))
-  (for-all ((v (a-list an-integer)))
-    (let ((tuple (cffi:convert-to-foreign v 'python.cffi::tuple)))
-      (is equalp v (cffi:convert-from-foreign tuple 'python.cffi::tuple))
-      (python.cffi:.dec-ref tuple)))
-  (for-all ((v #'a-vector))
-    (let ((list (cffi:convert-to-foreign v 'python.cffi::list)))
-      (is equalp v (python.cffi:list.get-slice list 0 (length v)))))
-  (for-all ((v #'a-hash))
-    (let ((dict (cffi:convert-to-foreign v 'python.cffi::dict)))
-      (is equalp v (python.cffi:dict.copy dict)))))
+(addtest (burgled-batteries)
+  sequences-round-trip
+  (quickcheck
+    ;; See the PyString warning in ffi-interface about known-issues not covered by
+    ;; quickcheck.
+    (for-all ((v #'a-string-without-nuls))
+      (is= v (python.cffi:string.from-string v)))
+    (for-all ((v #'an-octet-array))
+      (is equalp v (python.cffi:byte-array.from-string-and-size v (length v))))
+    (for-all ((v #'a-unicode-string))
+      (is= v (python.cffi:unicode.from-unicode v (length v))))
+    (for-all ((v (a-list an-integer)))
+      (let ((tuple (cffi:convert-to-foreign v 'python.cffi::tuple)))
+        (is equalp v (cffi:convert-from-foreign tuple 'python.cffi::tuple))
+        (python.cffi:.dec-ref tuple)))
+    (for-all ((v #'a-vector))
+      (let ((list (cffi:convert-to-foreign v 'python.cffi::list)))
+        (is equalp v (python.cffi:list.get-slice list 0 (length v)))))
+    (for-all ((v #'a-hash))
+      (let ((dict (cffi:convert-to-foreign v 'python.cffi::dict)))
+        (is equalp v (python.cffi:dict.copy dict))))))

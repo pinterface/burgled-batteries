@@ -104,14 +104,22 @@ For example, under the default policy of :DISCARD, you would see something like:
 If you'd like access to Python types without a known translation, :BARRIER
 or :FINALIZE are highly recommended over :PASS-THROUGH.  They do, however, come
 with [[http://pinterface.livejournal.com/40934.html][some caveats]] which you should be aware of.
+
+* Testing
+
+#+begin_src
+  (asdf:test-system "burgled-batteries")
+#+end_src
+
+Tests have been run under SBCL, Clozure CL, and CLISP.
+
 * To Do
  * Output redirection
  * Callbacks
  * Whole-module import (into own package?)
  * Python object <-> CLOS mappings
  * Provide facilities for user code to define own Lisp-Python mappings
- * Better tests that can be run all at once
- * Test on something other than SBCL
+ * Better integrate Quickcheck tests, so LIFT knows about quickcheck failures
  * Pathname support (requires FILE* support)
 
 * Prior Art / Other Solutions
