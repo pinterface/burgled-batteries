@@ -27,6 +27,21 @@
         :test (lambda (c) (declare (ignore c)) (not (.is-initialized)))
         (startup-python)))))
 
+(defun call-with-python (thunk)
+  (let ((cpython-initialized? (.is-initialized)))
+    (unless cpython-initialized?
+      (.initialize))
+    (unwind-protect
+         (funcall thunk)
+      (unless cpython-initialized?
+        (.finalize)))))
+
+(defmacro with-python (&body body)
+  "EXPERIMENTAL.  Ensures the CPython interpreter is running, executes BODY,
+then returns the interpreter to whatever state it was in prior to the
+WITH-PYTHON form being entered."
+  `(call-with-python (lambda () ,@body)))
+
 (defun import (name)
   "Imports a Python module into the current namespace.  Should be equivalent
 to (run \"import NAME\")."

@@ -65,6 +65,7 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
            #:apply)
   (:export #:startup-python
            #:shutdown-python
+           #:with-python
            #:import
            #:run
            #:run*
