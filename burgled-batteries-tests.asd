@@ -4,6 +4,8 @@
 (defsystem "burgled-batteries-tests"
   :name "burgled-batteries-tests"
   :description "burgled-batteries tests"
+  :author "pinterface <pix@kepibu.org>"
+  :license "MIT"
   :serial t
   :components
   ((:module "test"

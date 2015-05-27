@@ -11,8 +11,7 @@
     :depends-on (#:cffi #:alexandria #:parse-declarations-1.0 #:trivial-garbage
                         #-burgled-batteries.guess-not-grovel #:cl-fad)
     :name "burgled-batteries"
-    :author (:original "Dmitri Hrapof <hrapof@common-lisp.ru>"
-             :current "pinterface <pix@kepibu.org>")
+    :author "pinterface <pix@kepibu.org>"
     :license "MIT"
     :description "Lisp-Python interface"
     :long-description "
