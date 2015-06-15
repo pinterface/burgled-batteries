@@ -6,6 +6,7 @@ pretend the Lisp function was defined as (defun fun (positional &key keyword
 keyword) ...), and /then/ run the &body.
 
 ||#
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *callback-types* (make-hash-table))
   (defun set-callback-type (lisp-name flags)
@@ -37,33 +38,6 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
                              ((eql '&key (first args)) :keyword-arguments)
                              ((find '&key args)        :mixed-arguments)
                              (t                        :positional-arguments))))))
-
-;; SELF is NIL.  ARGS is NIL.  (Or a null pointer, if no translation.)
-(defpycallback test-no-arguments bool ()
-  (format t "arg: self=~A args=~A~%" self args)
-  t)
-
-;; SELF tends to be NIL.  ARGS is a list of arguments.
-(defpycallback test-arguments bool ((arg1 (bool :borrowed)))
-  (format t "arg: self=~A args=~A~%" self args)
-  t)
-
-;; called as test_key_args(a=1, b=2, ...)
-;; * SELF is NIL.  ARGS is an empty array.  DICT is a hashtable of name=value pairs
-;; HOWEVER, if called as test_key_args(1, 2, a=3, b=4, ...)
-;; * SELF is NIL.  ARGS is #(1 2).  DICT is a hashtable {a=3 b=4}
-(defpycallback test-key-args bool (&key (arg1 (bool :borrowed)))
-  (format t "key: self=~A args=~A dict=~A~%" self args dict)
-  t)
-
-;; SELF is NIL.  ARGS is an array of the positional (non-keyword) parameters.
-;; DICT is a hashtable of the keyword parameters.
-(defpycallback test-pos+key-args bool ((arg1 (bool :borrowed)) &key (arg2 (bool :borrowed)))
-  (format t "key: self=~A args=~A dict=~A~%" self args dict)
-  t)
-
-(defpycallback test-no-translation :pointer ()
-  (null-pointer))
 
 (defun init-func-def (ptr name flags meth &optional (doc (null-pointer)))
   (setf (foreign-slot-value ptr 'method-def 'name)  name
@@ -122,19 +96,14 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
           (%type.weaklist       ptr) (null-pointer))
     (type.ready ptr)))
 
-(defun make-test-module ()
-  (let* ((funcs '(("no_args"      test-no-arguments)
-                  ("args"         test-arguments)
-                  ("key_args"     test-key-args)
-                  ("pos_key_args" test-pos+key-args)
-                  ("no_trans"     test-no-translation)))
-         (ptr (foreign-alloc 'method-def :count (1+ (length funcs)))))
+(defun build-module (name methods)
+  (let ((ptr (foreign-alloc 'method-def :count (1+ (length methods)))))
     (loop :for i :from 0
-          :for (py lisp) :in funcs
-          :for defptr = (mem-aref ptr 'method-def i)
-          :do (init-func-def defptr py (get-callback-type lisp) (get-callback lisp)))
-    (init-func-def (mem-aref ptr 'method-def (length funcs)) (null-pointer) 0 (null-pointer))
-    (.init-module* "lisp_test" ptr)))
-
-#+(or) (make-test-module)
-#+(or) (burgled-batteries:import "lisp_test")
+       :for (python-method-name . lisp-method) :in methods
+       :for defptr = (mem-aref ptr 'method-def i)
+       :do (init-func-def defptr python-method-name
+			  (get-callback-type lisp-method) 
+			  (get-callback lisp-method)))
+    (init-func-def (mem-aref ptr 'method-def (length methods)) 
+		   (null-pointer) 0 (null-pointer))
+    (.init-module* name ptr)))

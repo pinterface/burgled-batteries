@@ -14,6 +14,7 @@
            #:+True+
            #:+False+
            #:trace-refs
+	   #:defpycallback
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))
