@@ -25,19 +25,32 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
   (let ((self-type (if (eql return-type :pointer) :pointer '(object :borrowed)))
         (args-type (if (eql return-type :pointer) :pointer '(tuple  :borrowed)))
         (dict-type (if (eql return-type :pointer) :pointer '(dict   :borrowed))))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       (defcallback ,name ,return-type
-           ,@(cond ((find '&key args) `(((self ,self-type) (args ,args-type) (dict ,dict-type))
-                                        (declare (ignorable self args dict))))
-                   (t `(((self ,self-type) (args ,args-type))
-                        (declare (ignorable self args)))))
-         ,@body)
-       (set-callback-type ',name
-                          ,(cond
-                             ((zerop (length args))    :no-arguments)
-                             ((eql '&key (first args)) :keyword-arguments)
-                             ((find '&key args)        :mixed-arguments)
-                             (t                        :positional-arguments))))))
+    (flet ((extract-args ()
+	     (if (eql return-type :pointer)
+		 nil
+		 (loop 
+		    :for arg :in args
+		    :for pos := 0 :then (1+ pos)
+		    :for key-p := (or key-p (equalp arg '&key))
+		    :when (not (equalp arg '&key))
+		    :collect
+		    (if (not key-p)
+			(cl:list (first arg) `(nth ,pos args))
+			(cl:list (first arg) `(gethash ,(string-downcase (cl:string (first arg))) dict)))))))	     
+      `(eval-when (:compile-toplevel :load-toplevel :execute)
+	 (defcallback ,name ,return-type
+	     ,@(cond ((find '&key args) `(((self ,self-type) (args ,args-type) (dict ,dict-type))
+					  (declare (ignorable self args dict))))
+		     (t `(((self ,self-type) (args ,args-type))
+			  (declare (ignorable self args)))))
+	   (let ,(extract-args)
+	     ,@body))
+	 (set-callback-type ',name
+			    ,(cond
+			      ((zerop (length args))    :no-arguments)
+			      ((eql '&key (first args)) :keyword-arguments)
+			      ((find '&key args)        :mixed-arguments)
+			      (t                        :positional-arguments)))))))
 
 (defun init-func-def (ptr name flags meth &optional (doc (null-pointer)))
   (setf (foreign-slot-value ptr 'method-def 'name)  name

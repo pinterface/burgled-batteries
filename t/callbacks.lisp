@@ -9,24 +9,46 @@
 
 ;; SELF tends to be NIL.  ARGS is a list of arguments.
 (python.cffi::defpycallback test-arguments python.cffi::bool ((arg1 (bool :borrowed)))
-  (format t "arg: self=~A args=~A~%" python.cffi::self python.cffi::args)
-  (setf *callback-ret* (list python.cffi::self python.cffi::args)))
+  (format t "arg: self=~A args=~A arg1=~A~%" 
+	  python.cffi::self 
+	  python.cffi::args
+	  arg1)
+  (setf *callback-ret* 
+	(list python.cffi::self 
+	      python.cffi::args
+	      arg1)))
 
 ;; called as test_key_args(a=1, b=2, ...)
 ;; * SELF is NIL.  ARGS is an empty array.  DICT is a hashtable of name=value pairs
 ;; HOWEVER, if called as test_key_args(1, 2, a=3, b=4, ...)
 ;; * SELF is NIL.  ARGS is #(1 2).  DICT is a hashtable {a=3 b=4}
-(python.cffi::defpycallback test-key-args python.cffi::bool (&key (arg1 (bool :borrowed)))
-  (format t "key: self=~A args=~A dict=~A~%" python.cffi::self 
-	  python.cffi::args python.cffi::dict)
-  (setf *callback-ret* (list python.cffi::self python.cffi::args python.cffi::dict)))
+(python.cffi::defpycallback test-key-args python.cffi::bool 
+    (&key (arg1 (bool :borrowed)))
+  (format t "key: self=~A args=~A dict=~A arg1=~A~%" 
+	  python.cffi::self 
+	  python.cffi::args 
+	  python.cffi::dict
+	  arg1)
+  (setf *callback-ret* (list python.cffi::self 
+			     python.cffi::args 
+			     python.cffi::dict
+			     arg1)))
 
 ;; SELF is NIL.  ARGS is an array of the positional (non-keyword) parameters.
 ;; DICT is a hashtable of the keyword parameters.
-(python.cffi::defpycallback test-pos+key-args python.cffi::bool ((arg1 (bool :borrowed)) &key (arg2 (bool :borrowed)))
-  (format t "key: self=~A args=~A dict=~A~%" python.cffi::self 
-	  python.cffi::args python.cffi::dict)
-  (setf *callback-ret* (list python.cffi::self python.cffi::args python.cffi::dict)))
+(python.cffi::defpycallback test-pos+key-args python.cffi::bool 
+    ((arg1 (bool :borrowed)) &key (arg2 (bool :borrowed)))
+  (format t "key: self=~A args=~A dict=~A arg1=~A arg2=~A~%" 
+	  python.cffi::self 
+	  python.cffi::args 
+	  python.cffi::dict
+	  arg1
+	  arg2)
+  (setf *callback-ret* (list python.cffi::self 
+			     python.cffi::args 
+			     python.cffi::dict
+			     arg1
+			     arg2)))
 
 (python.cffi::defpycallback test-no-translation :pointer ()
   (python.cffi::null-pointer))
@@ -67,31 +89,26 @@
 	'PYTHON.CFFI::OBJECT!)))
   TRANSFORMED1078)
   
-  (lift:ensure (equalp *callback-ret* (list nil (list 22 "a"))))
+  (lift:ensure (equalp *callback-ret* (list nil (list 22 "a") 22)))
 
-  ;; callbacks_test.key_args(22, 'a', x=10, y='b')
+  ;; callbacks_test.key_args(arg1='foo')
 
   (LET ((TRANSFORMED1102
        (CFFI:CONVERT-FROM-FOREIGN
         (LET ((KWARGS1104 (MAKE-HASH-TABLE)))
-          (SETF (GETHASH "x" KWARGS1104) (PYTHON.CFFI:NUMBER.INT* 10))
-          (SETF (GETHASH "y" KWARGS1104)
-                  (PYTHON.CFFI:STRING.FROM-STRING* "b"))
+          (SETF (GETHASH "arg1" KWARGS1104) (PYTHON.CFFI:STRING.FROM-STRING* "foo"))
           (BURGLED-BATTERIES::WITH-CPYTHON-POINTER (PYFUN1103
                                                     (PYTHON.CFFI:OBJECT.GET-ATTR-STRING*
                                                      (BURGLED-BATTERIES::RUN*
                                                       "callbacks_test")
                                                      "key_args"))
             (PYTHON.CFFI:OBJECT.CALL* PYFUN1103
-                                      (LIST (PYTHON.CFFI:NUMBER.INT* 22)
-                                            (PYTHON.CFFI:STRING.FROM-STRING*
-                                             "a"))
+                                      nil
                                       KWARGS1104)))
         'PYTHON.CFFI::OBJECT!)))
   TRANSFORMED1102)
-  
-  (lift:ensure (equalp (second *callback-ret*) (list 22 "a")))
-    
-  (let ((keys (third *callback-ret*)))
-    (lift:ensure (equalp (gethash "x" keys) 10))
-    (lift:ensure (equalp (gethash "y" keys) "b"))))
+
+  (destructuring-bind (self args dict arg1) *callback-ret*
+    (lift:ensure (equalp args nil))
+    (lift:ensure (equalp (gethash "arg1" dict) "foo"))
+    (lift:ensure (equalp arg1 "foo"))))
