@@ -68,7 +68,12 @@ to (run \"import NAME\")."
     (eval.eval-code* code-ptr main-module-dict* main-module-dict*)))
 
 (defmethod run* ((file pathname))
-  (error "Sorry, running a Python file is not yet supported."))
+  (let ((fp
+	 (python.cffi::fopen (princ-to-string file)
+			     "r")))
+    (unwind-protect
+	 (python.cffi:run.any-file fp (princ-to-string file))
+      (python.cffi::fclose fp))))  
 
 ;; Rather than duplicate all the defmethods of RUN*, we just call RUN* here and
 ;; translate the value ourselves.

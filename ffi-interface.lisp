@@ -393,46 +393,44 @@
 ;;;; High-level Interpreter Functions
 (in-python-docs "/c-api/veryhigh.html")
 
+(cffi:defcfun "fopen" :pointer (path :string) (mode :string))
+(cffi:defcfun "fclose" :pointer (file :pointer))
+(cffi:defcfun "fileno" :int (stream :pointer))
+
 (defcstruct compiler-flags (flags :int))
 #+requires-CHAR*-ARRAY-support (defpyfun "Py_Main" :int ((argc :int) (argv (:array :string)))) ;canerr
-;; NOTE: To support FILE*, we'll need to either get the FILE* for an open stream
-;;       (if the lisp provides access to it), or get the FD and call fdopen(fd,
-;;       mode).  If the Lisp doesn't provide access to the FILE pointer or
-;;       file-descriptor, then we're out of luck.  It does, however, appear that
-;;       fdopen and the other C f* functions are available for use via
-;;       cffi:defcfun without us having to create wrappers, though.
-#+requires-FILE*-support (defpyfun "PyRun_AnyFile"        0-on-success/no-fetch ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFileFlags"   0-on-success/no-fetch ((fp :file) (filename :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFileEx"      0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int)))
-#+requires-FILE*-support (defpyfun "PyRun_AnyFileExFlags" 0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int) (flags compiler-flags)))
+(defpyfun "PyRun_AnyFile"        0-on-success/no-fetch ((fp :pointer) (filename :string)))
+(defpyfun "PyRun_AnyFileFlags"   0-on-success/no-fetch ((fp :pointer) (filename :string) (flags (:pointer (:struct compiler-flags)))))
+(defpyfun "PyRun_AnyFileEx"      0-on-success/no-fetch ((fp :pointer) (filename :string) (closeit :int)))
+(defpyfun "PyRun_AnyFileExFlags" 0-on-success/no-fetch ((fp :pointer) (filename :string) (closeit :int) (flags (:pointer (:struct compiler-flags)))))
 (defpyfun "PyRun_SimpleString"      0-on-success/no-fetch ((command :string)))
 (defpyfun "PyRun_SimpleStringFlags" 0-on-success/no-fetch ((command :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFile"        0-on-success/no-fetch ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFileFlags"   0-on-success/no-fetch ((fp :file) (filename :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFileEx"      0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int)))
-#+requires-FILE*-support (defpyfun "PyRun_SimpleFileExFlags" 0-on-success/no-fetch ((fp :file) (filename :string) (closeit :int) (flags compiler-flags)))
+(defpyfun "PyRun_SimpleFile"        0-on-success/no-fetch ((fp :pointer) (filename :string)))
+#+simple-file-flags(defpyfun "PyRun_SimpleFileFlags"   0-on-success/no-fetch ((fp :pointer) (filename :string) (flags (:pointer (:struct compiler-flags)))))
+(defpyfun "PyRun_SimpleFileEx"      0-on-success/no-fetch ((fp :pointer) (filename :string) (closeit :int)))
+(defpyfun "PyRun_SimpleFileExFlags" 0-on-success/no-fetch ((fp :pointer) (filename :string) (closeit :int) (flags (:pointer (:struct compiler-flags)))))
 ;; FIXME: The Python docs leave me uncertain as to whether these are /no-fetch
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveOne"       0-on-success ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveOneFlags"  0-on-success ((fp :file) (filename :string) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveLoop"      0-on-success ((fp :file) (filename :string)))
-#+requires-FILE*-support (defpyfun "PyRun_InteractiveLoopFlags" 0-on-success ((fp :file) (filename :string) (flags compiler-flags)))
+(defpyfun "PyRun_InteractiveOne"       0-on-success ((fp :pointer) (filename :string)))
+(defpyfun "PyRun_InteractiveOneFlags"  0-on-success ((fp :pointer) (filename :string) (flags (:pointer (:struct compiler-flags)))))
+(defpyfun "PyRun_InteractiveLoop"      0-on-success ((fp :pointer) (filename :string)))
+(defpyfun "PyRun_InteractiveLoopFlags" 0-on-success ((fp :pointer) (filename :string) (flags (:pointer (:struct compiler-flags)))))
 
 (defctype .node (can-error :pointer))
 (defpyfun "PyParser_SimpleParseString"              .node ((str :string) (start parser-context)))
 (defpyfun "PyParser_SimpleParseStringFlags"         .node ((str :string) (start parser-context) (flags :int)))
 (defpyfun "PyParser_SimpleParseStringFlagsFilename" .node ((str :string) (filename :string) (start parser-context) (flags :int)))
-#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFile"      .node ((fp :file) (filename :string) (start parser-context)))
-#+requires-FILE*-support (defpyfun "PyParser_SimpleParseFileFlags" .node ((fp :file) (filename :string) (start parser-context) (flags :int)))
+(defpyfun "PyParser_SimpleParseFile"      .node ((fp :pointer) (filename :string) (start parser-context)))
+(defpyfun "PyParser_SimpleParseFileFlags" .node ((fp :pointer) (filename :string) (start parser-context) (flags :int)))
 
 (defpyfun "PyRun_String"      object! ((str :string) (start parser-context) (globals dict) (locals dict)))
 (defpyfun "PyRun_StringFlags" object! ((str :string) (start parser-context) (globals dict) (locals dict) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_File"        object! ((fp :file) (filename :string) (start parser-context) (globals dict) (locals dict)))
-#+requires-FILE*-support (defpyfun "PyRun_FileEx"      object! ((fp :file) (filename :string) (start parser-context) (globals dict) (locals dict) (closeit :int)))
-#+requires-FILE*-support (defpyfun "PyRun_FileFlags"   object! ((fp :file) (filename :string) (start parser-context) (globals dict) (locals dict) (flags compiler-flags)))
-#+requires-FILE*-support (defpyfun "PyRun_FileExFlags" object! ((fp :file) (filename :string) (start parser-context) (globals dict) (locals dict) (closeit :int) (flags compiler-flags)))
+(defpyfun "PyRun_File"        object! ((fp :pointer) (filename :string) (start parser-context) (globals dict) (locals dict)))
+(defpyfun "PyRun_FileEx"      object! ((fp :pointer) (filename :string) (start parser-context) (globals dict) (locals dict) (closeit :int)))
+(defpyfun "PyRun_FileFlags"   object! ((fp :pointer) (filename :string) (start parser-context) (globals dict) (locals dict) (flags (:pointer (:struct compiler-flags)))))
+(defpyfun "PyRun_FileExFlags" object! ((fp :pointer) (filename :string) (start parser-context) (globals dict) (locals dict) (closeit :int) (flags (:pointer (:struct compiler-flags)))))
 
 (defpyfun "Py_CompileString"      code! ((str :string) (filename :string) (start parser-context)))
-(defpyfun "Py_CompileStringFlags" code! ((str :string) (filename :string) (start parser-context) (flags compiler-flags)))
+(defpyfun "Py_CompileStringFlags" code! ((str :string) (filename :string) (start parser-context) (flags (:pointer (:struct compiler-flags)))))
 (defpyfun "PyEval_EvalCode"    object! ((co code) (globals dict) (locals dict)))
 #+requires-POINTER-ARRAY-support (defpyfun "PyEval_EvalCodeEx"  object! ((co code) (globals dict) (locals dict) (args (:array object)) (argcount :int) (kws (:array object)) (kwcount :int) (defs (:array object)) (defcount :int) (closure object)))
 (defpyfun "PyEval_EvalFrame"   object! ((f frame-object)))
@@ -592,7 +590,7 @@
 
 ;;; Object Protocol
 (in-python-docs "/c-api/object.html")
-#+requires-FILE*-support (defpyfun "PyObject_Print" :int ((o object) (fp :file) (flags :int)))
+(defpyfun "PyObject_Print" :int ((o object) (fp :pointer) (flags :int)))
 (defpyfun "PyObject_HasAttr"       :boolean ((o object) (attr-name object)))
 (defpyfun "PyObject_HasAttrString" :boolean ((o object) (attr-name :string)))
 (defpyfun "PyObject_GetAttr"        object! ((o object) (attr-name object)))
