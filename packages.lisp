@@ -13,8 +13,7 @@
            #:+None+
            #:+True+
            #:+False+
-           #:trace-refs
-	   #:defpycallback
+           #:trace-refs	   
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))
@@ -74,4 +73,7 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
            #:apply
            #:defpyfun
            #:defpyslot
-           #:defpymethod))
+           #:defpymethod
+	   #:defpymodule
+	   #:in-pymodule
+	   #:defpycallback))

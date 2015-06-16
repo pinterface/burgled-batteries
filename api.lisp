@@ -6,7 +6,8 @@
     (module.get-dict* main-module*))
 
 (defun startup-python ()
-  (.initialize))
+  (.initialize)
+  (initialize-modules))
 
 (defun shutdown-python ()
   (.finalize))
