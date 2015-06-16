@@ -54,24 +54,28 @@ is replaced with replacement."
   (setf *python-module* (get-pymodule name)))
 
 (defmacro defpycallback (name-and-options (&rest args) &body body)
-  (multiple-value-bind (lisp-name python-name return-type)
+  (multiple-value-bind (lisp-name python-name return-type python-module)
       (if (listp name-and-options)
 	  (let ((options (cdr name-and-options)))
 	    (values (first name-and-options)
 		    (or (getf options :python-name)
 			(python-string (first name-and-options)))
 		    (or (getf options :return-type)
-			:pointer)))
+			:pointer)
+		    (let ((python-module (getf options :module)))
+		      (or (and python-module `(get-pymodule ',python-module))
+			  '*python-module*))))
 	  (values name-and-options
 		  (python-string name-and-options)
-		  :pointer))	  
+		  :pointer
+		  '*python-module*))
     `(progn
        (python.cffi::defpycallback ,lisp-name ,return-type ,args ,@body)
-       (when *python-module*
+       (when ,python-module
 	 (pushnew 
 	  (cons ,python-name
 		',lisp-name)
-	  (python-module-methods *python-module*)
+	  (python-module-methods ,python-module)
 	  :test #'equalp)))))
 
 (defun initialize-module (module)
