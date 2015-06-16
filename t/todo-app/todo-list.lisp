@@ -22,5 +22,14 @@
 
 (defun tk ()
   (python:startup-python)
-  (python:run* (asdf:system-relative-pathname :burgled-batteries 
-					      "t/todo-app/tk.py")))
+  (unwind-protect
+       (python:run* (asdf:system-relative-pathname :burgled-batteries 
+						   "t/todo-app/tk.py"))
+    (python:shutdown-python)))
+
+(defun wx ()
+  (python:startup-python)
+  (unwind-protect
+    (python:run* (asdf:system-relative-pathname :burgled-batteries 
+						"t/todo-app/wx-gui.py"))
+    (python:shutdown-python)))
