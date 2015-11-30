@@ -937,7 +937,7 @@
      ("PyUnicodeUCS4_FromUnicode" unicode! ((u ucs4-string) (size ssize-t)))))
 #+python3
 (defpyfun* unicode.from-unicode
-    (("PyUnicode_FromUnicode" unicode! ((u ucs2-string) (size ssize-t)))))
+    (("PyUnicode_FromUnicode" unicode! ((u ucs4-string) (size ssize-t)))))
 #-python3
 (defpyfun* unicode.from-string-and-size
     (("PyUnicodeUCS2_FromStringAndSize" unicode! ((u utf8-string) (size ssize-t)))
