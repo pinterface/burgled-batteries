@@ -17,7 +17,11 @@
         :when (cl-fad:directory-exists-p path) :return it))
 
 (defparameter *cpython-include-dir*
-  (or (loop :for minor :from 7 :downto 4
+  (or (loop :for minor :from 7 :downto 3
+            :when (or (cl-fad:directory-exists-p (format nil "/usr/include/python3.~d" minor))
+                      (cl-fad:directory-exists-p (format nil "/usr/local/include/python3.~d" minor)))
+              :return it)
+      (loop :for minor :from 7 :downto 4
             :when (or (cl-fad:directory-exists-p (format nil "/usr/include/python2.~d" minor))
                       (cl-fad:directory-exists-p (format nil "/usr/local/include/python2.~d" minor)))
               :return it)

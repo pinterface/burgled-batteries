@@ -106,4 +106,5 @@
   ((:ssize-t            "T_PYSSIZET")))
 
 ;; API Version
+(constant (+abi-version+ "PYTHON_ABI_VERSION") :type integer)
 (constant (+api-version+ "PYTHON_API_VERSION") :type integer)
