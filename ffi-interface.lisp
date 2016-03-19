@@ -10,7 +10,7 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (define-foreign-library python-library
     (:darwin (:framework "Python"))
-    (:unix (:or #+python3 "libpython3.4.so.1.0" "libpython2.7.so.1.0" "libpython2.6.so.1.0" "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0"))
+    (:unix (:or #+python3 "~/anaconda3/envs/py34/lib/libpython3.4m.so.1.0" "libpython3.4m.so.1.0" "libpython3.4.so.1.0" "libpython2.7.so.1.0" "libpython2.6.so.1.0" "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0"))
     (:windows (:or "python27.dll" "python26.dll" "python25.dll" "python24.dll" "python23.dll"))
     (t (:default "libpython")))
   (use-foreign-library python-library))
@@ -148,8 +148,8 @@
 ;;; Numeric Types
 (defpytype "PyInt"
   (:type integer)
-  (:to   (value type) (int.from-long* value))
-  (:from (value type) (int.as-long value)))
+  (:to   (value type) #-python3(int.from-long* value) #+python3(long.from-long* value))
+  (:from (value type) #-python3(int.as-long value) #+python3(long.as-long value)))
 
 (defpyvar "&_Py_ZeroStruct" +False+)
 (defpyvar "&_Py_TrueStruct" +True+)
@@ -801,15 +801,28 @@
 ;;        "ham" but I get a VALUE-ERROR instead.  Am /I/ supposed to point pend
 ;;        there?
 #-python3(defpyfun "PyInt_FromString"  object! ((str :string) (pend (return :string)) (base :int)))
-#-python3(defpyfun "PyInt_FromLong"    int! ((ival :long)))
+#+python3
+(defpyfun "PyLong_FromString"  object! ((str :string) (pend (return :string)) (base :int)))
+#-python3
+(defpyfun "PyInt_FromLong"    int! ((ival :long)))
+#+python3(defpyfun "PyLong_FromLong"    int! ((ival :long)))
 #-python3(defpyfun "PyInt_FromSsize_t" int! ((ival ssize-t)))
+#+python3(defpyfun "PyLong_FromSsize_t" int! ((ival ssize-t)))
 #-python3(defpyfun "PyInt_FromSize_t"  int! ((ival size-t)))
+#+python3(defpyfun "PyLong_FromSize_t"  int! ((ival size-t)))
 #-python3(defpyfun "PyInt_AsLong"  :long ((io object)))
+#+python3(defpyfun "PyLong_AsLong"  :long ((io object)))
 #-python3(defpyfun "PyInt_AsUnsignedLongMask"     :ulong              ((io object)))
+#+python3(defpyfun "PyLong_AsUnsignedLongMask"     :ulong              ((io object)))
 #-python3(defpyfun "PyInt_AsUnsignedLongLongMask" :unsigned-long-long ((io object)))
+#+python3(defpyfun "PyLong_AsUnsignedLongLongMask" :unsigned-long-long ((io object)))
 #-python3(defpyfun "PyInt_AsSsize_t"              ssize-t             ((io object)))
-#-python3(defpyfun "PyInt_GetMax" :long ())
+#+python3(defpyfun "PyLong_AsSsize_t"              ssize-t             ((io object)))
+#-python3
+(defpyfun "PyInt_GetMax" :long ())
+;; #+python3(defpyfun "PyLong_GetMax" :long ())
 #-python3(defpyfun "PyInt_ClearFreeList" :int ())
+;; #+python3(defpyfun "PyLong_ClearFreeList" :int ())
 
 ;;; Boolean Objects
 (in-python-docs "/c-api/bool.html")
