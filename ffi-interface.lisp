@@ -10,7 +10,7 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (define-foreign-library python-library
     (:darwin (:framework "Python"))
-    (:unix (:or #+python3 "~/anaconda3/envs/py34/lib/libpython3.4m.so.1.0" "libpython3.4m.so.1.0" "libpython3.4.so.1.0" "libpython2.7.so.1.0" "libpython2.6.so.1.0" "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0"))
+    (:unix (:or #+python3 "/home/jingtao/anaconda3/envs/py34/lib/libpython3.4m.so.1.0" "libpython3.4m.so.1.0" "libpython3.4.so.1.0" "libpython2.7.so.1.0" "libpython2.6.so.1.0" "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0"))
     (:windows (:or "python27.dll" "python26.dll" "python25.dll" "python24.dll" "python23.dll"))
     (t (:default "libpython")))
   (use-foreign-library python-library))
@@ -198,11 +198,12 @@
   (:to   (value type) (string.from-string* value))
   (:from (value type) (string.as-string    value)))
 
-#+(or) ;; FIXME: we'll need the bytes.whatever functions, and a way to alias the
+#+(or python3) ;; FIXME: we'll need the bytes.whatever functions, and a way to alias the
        ;;        PyString bits that make up PyBytes in Python 2
 (defpytype "PyBytes"
   (:to   (value type) (bytes.from-string* value))
-  (:from (value type) (bytes.as-string    value)))
+  ;; FIXME: some python bytes is not null-terminated,that is, it contails multiple null-terminated byte string.
+  (:from (value type) (let ((cffi:*default-foreign-encoding* :latin-1)) (bytes.as-string    value))))
 
 ;; Shorthand types for unicode strings
 (defctype utf8-string (:string :encoding :utf-8))
@@ -922,17 +923,18 @@
 ;(defpyfun "PyString_AsEncodedObject" string! ((str object) (encoding :string) (errors :string)))
 
 ;; TODO PyBytes are #define-aliased to PyString in Python 2
-;(defpyfun "PyBytes_FromString"        bytes! ((v :string)))
-;(defpyfun "PyBytes_FromStringAndSize" bytes! ((v :string) (len ssize-t)))
-;(defpyfun "PyBytes_FromFormat"        bytes! ((format :string) &rest))
+#+python3 (defpyfun "PyBytes_FromString"        bytes! ((v :string)))
+#+python3 (defpyfun "PyBytes_FromStringAndSize" bytes! ((v :string) (len ssize-t)))
+#+python3 (defpyfun "PyBytes_FromFormat"        bytes! ((format :string) &rest))
 ;#+requires-va_list-support (defpyfun "PyBytes_FromFormatV"        bytes! ((format :string) (vargs va_list)))
-;(defpyfun "PyBytes_Size" ssize-t! ((string object)))
-;(defpyfun "PyBytes_AsString" :string ((string object)))
+#+python3 (defpyfun "PyBytes_Size" ssize-t! ((string object)))
+#+python3 (defpyfun "PyBytes_AsString" :string ((string object)))
+;#+requires-call-by-reference-support (defpyfun "PyBytes_AsStringAndSize" :int ((obj object) (buffer (:ref :string)) (length (:pointer ssize-t))))
 ;#+requires-call-by-reference-support (defpyfun "PyBytes_AsStringAndSize" :int ((obj object) (buffer (:ref :string)) (length (:pointer ssize-t))))
 ;#+requires-call-by-reference-support (defpyfun "PyBytes_Concat" :void ((string (:ref object)) (newpart object)))
 ;#+requires-call-by-reference-support (defpyfun "PyBytes_ConcatAndDel" :void ((string (:ref object)) (newpart object)))
 ;#+requires-call-by-reference-support (defpyfun "_PyBytes_Resize" :int ((string (:ref object)) (newsize ssize-t)))
-;(defpyfun "PyBytes_Format" object! ((format object) (args tuple)))
+; (defpyfun "PyBytes_Format" object! ((format object) (args tuple)))
 
 ;;; Unicode Objects
 (in-python-docs "/c-api/unicode.html")
