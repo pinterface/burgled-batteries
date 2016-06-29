@@ -17,7 +17,8 @@
         :when (cl-fad:directory-exists-p path) :return it))
 
 (defparameter *cpython-include-dir*
-  (or (loop :for minor :from 7 :downto 4
+  (or #+os-macosx (cl-fad:directory-exists-p "/Library/Frameworks/Python.framework/Headers")
+      (loop :for minor :from 7 :downto 4
             :when (or (cl-fad:directory-exists-p (format nil "/usr/include/python2.~d" minor))
                       (cl-fad:directory-exists-p (format nil "/usr/local/include/python2.~d" minor)))
               :return it)
