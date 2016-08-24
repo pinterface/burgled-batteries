@@ -831,8 +831,10 @@
 
 ;;; Long Integer Objects
 (in-python-docs "/c-api/long.html")
+#-python3
 (defpyfun "PyLong_FromLong"             long! ((v :long)))
 (defpyfun "PyLong_FromUnsignedLong"     long! ((v :ulong)))
+#-python3
 (defpyfun "PyLong_FromSsize_t"          long! ((v ssize-t)))
 (defpyfun "PyLong_FromSize_t"           long! ((v size-t)))
 (defpyfun "PyLong_FromLongLong"         long! ((v :long-long)))
@@ -1454,9 +1456,9 @@
 (defpyfun "PyObject_InitVar" var-object ((op var-object) (type type) (size ssize-t))) ; FIXME: is this canerr?
 (defpyfun "PyObject_Del"  :void ((op object)) (:implementation (object.free op)))
 (defpyfun "PyObject_Free" :void ((op object)))
-(defpyfun "Py_InitModule"  (module! :borrowed) ((name :string) (methods method-def))
+(defpyfun "Py_InitModule"  (module! :borrowed) ((name :string) (methods (:pointer (:struct method-def))))
   (:implementation (.init-module4 name methods (null-pointer) (null-pointer) +api-version+)))
-(defpyfun "Py_InitModule3" (module! :borrowed) ((name :string) (methods method-def) (doc :string))
+(defpyfun "Py_InitModule3" (module! :borrowed) ((name :string) (methods (:pointer (:struct method-def))) (doc :string))
   (:implementation (.init-module4 name methods doc (null-pointer) +api-version+)))
 #-python3
 (defpyfun* .init-module4

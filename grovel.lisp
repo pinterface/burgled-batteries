@@ -35,6 +35,7 @@
   ((:>= "Py_GE")))
 
 ;; Type Flags
+#-python3
 (bitfield (type-flags :base-type :long)
   ((:have-get-char-buffer     "Py_TPFLAGS_HAVE_GETCHARBUFFER"))
   ((:have-sequence-in         "Py_TPFLAGS_HAVE_SEQUENCE_IN"))
