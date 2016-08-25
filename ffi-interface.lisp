@@ -114,7 +114,10 @@
   ;; as buffer
   (as-buffer :pointer)
   ;; flags marking optional/expanded features
+  #-python3
   (flags #.(cffi::canonicalize-foreign-type 'type-flags) type-flags)
+  #+python3
+  (flags :ulong)
   ;; docstring
   (doc :string)
   ;; mo' functions
@@ -146,15 +149,21 @@
 (defun %none.check (o) (pointer-eq +None+ o))
 
 ;;; Numeric Types
+#-python3
 (defpytype "PyInt"
   (:type integer)
   (:to   (value type) #-python3(int.from-long* value) #+python3(long.from-long* value))
   (:from (value type) #-python3(int.as-long value) #+python3(long.as-long value)))
 
+(defpytype "PyLong"
+  (:type integer)
+  (:to (value type) (long.from-long* value))
+  (:from (value type) (long.as-long value)))
+
 (defpyvar "&_Py_ZeroStruct" +False+)
 (defpyvar "&_Py_TrueStruct" +True+)
 (defpytype "PyBool"
-  (:superclass "PyInt")
+  (:superclass "PyLong")
   (:type boolean)
   (:to (value type) (if value +True+ +False+))
   (:from (value type)
@@ -162,10 +171,6 @@
       ((pointer-eq +True+ value) t)
       ((pointer-eq +False+ value) nil)
       (t (error "Not a boolean!")))))
-
-(defpytype "PyLong"
-  (:to (value type) (long.from-long* value))
-  (:from (value type) (long.as-long value)))
 
 (defpytype "PyFloat"
   (:type cl:float)
@@ -194,6 +199,7 @@
 ;;           encoding it is means this isn't really fixable in practice.  If you
 ;;           want reliable string conversion you should use PyUnicode, and
 ;;           PyByteArray for reliable octet-array conversion.
+#-python3
 (defpytype "PyString"
   (:to   (value type) (string.from-string* value))
   (:from (value type) (string.as-string    value)))
@@ -782,6 +788,7 @@
 (in-python-docs "/c-api/type.html")
 (defpyfun "PyType_ClearCache" :uint ())
 (defpyfun "PyType_Modified" :void ((type type)))
+#-python3
 (defpyfun "PyType_HasFeature" :boolean ((o object) (feature type-flags))
   (:implementation (logand feature (%type.flags* o))))
 (defpyfun "PyType_IS_GC"      :boolean ((o object))
@@ -802,23 +809,14 @@
 ;;        "ham" but I get a VALUE-ERROR instead.  Am /I/ supposed to point pend
 ;;        there?
 #-python3(defpyfun "PyInt_FromString"  object! ((str :string) (pend (return :string)) (base :int)))
-#+python3
-(defpyfun "PyLong_FromString"  object! ((str :string) (pend (return :string)) (base :int)))
 #-python3
 (defpyfun "PyInt_FromLong"    int! ((ival :long)))
-#+python3(defpyfun "PyLong_FromLong"    int! ((ival :long)))
 #-python3(defpyfun "PyInt_FromSsize_t" int! ((ival ssize-t)))
-#+python3(defpyfun "PyLong_FromSsize_t" int! ((ival ssize-t)))
 #-python3(defpyfun "PyInt_FromSize_t"  int! ((ival size-t)))
-#+python3(defpyfun "PyLong_FromSize_t"  int! ((ival size-t)))
 #-python3(defpyfun "PyInt_AsLong"  :long ((io object)))
-#+python3(defpyfun "PyLong_AsLong"  :long ((io object)))
 #-python3(defpyfun "PyInt_AsUnsignedLongMask"     :ulong              ((io object)))
-#+python3(defpyfun "PyLong_AsUnsignedLongMask"     :ulong              ((io object)))
 #-python3(defpyfun "PyInt_AsUnsignedLongLongMask" :unsigned-long-long ((io object)))
-#+python3(defpyfun "PyLong_AsUnsignedLongLongMask" :unsigned-long-long ((io object)))
 #-python3(defpyfun "PyInt_AsSsize_t"              ssize-t             ((io object)))
-#+python3(defpyfun "PyLong_AsSsize_t"              ssize-t             ((io object)))
 #-python3
 (defpyfun "PyInt_GetMax" :long ())
 ;; #+python3(defpyfun "PyLong_GetMax" :long ())
@@ -831,10 +829,8 @@
 
 ;;; Long Integer Objects
 (in-python-docs "/c-api/long.html")
-#-python3
 (defpyfun "PyLong_FromLong"             long! ((v :long)))
 (defpyfun "PyLong_FromUnsignedLong"     long! ((v :ulong)))
-#-python3
 (defpyfun "PyLong_FromSsize_t"          long! ((v ssize-t)))
 (defpyfun "PyLong_FromSize_t"           long! ((v size-t)))
 (defpyfun "PyLong_FromLongLong"         long! ((v :long-long)))
@@ -905,7 +901,6 @@
 ;;; String/Bytes Objects
 (in-python-docs "/c-api/string.html")
 #-python3(defpyfun "PyString_FromString"        string! ((v :string)))
-#+python3(defpyfun "PyUnicode_FromString"        string! ((v :string)))
 #-python3(defpyfun "PyString_FromStringAndSize" string! ((v :string) (len ssize-t))) ; size is BYTES, not characters!
 #-python3(defpyfun "PyString_FromFormat"        string! ((format :string) &rest))
 #+requires-va_list-support (defpyfun "PyString_FromFormatV"       string! ((format :string) (vargs va_list)))
@@ -1105,6 +1100,7 @@
 ;;        depending on which one Python has been compiled to use.  It's a
 ;;        :pointer for now because we aren't checking here and so might get it
 ;;        wrong it we assumed.
+#-python3
 (defpyfun "PyUnicode_EncodeUTF7" string! ((s :pointer) (size ssize-t) (base64SetO :int) (base64WhiteSpace :int) (errors :string)))
 
 ;; Unicode-Escape Codec
@@ -1206,9 +1202,9 @@
 ;;        depending on which one Python has been compiled to use.  It's a
 ;;        :pointer for now because we aren't checking here and so might get it
 ;;        wrong it we assumed.
-(defpyfun "PyUnicode_EncodeMBCS" string! ((s :pointer) (size ssize-t) (errors :string))
+(defpyfun "PyUnicode_EncodeMBCS" #-python3 string! #+python3 object! ((s :pointer) (size ssize-t) (errors :string))
   (:requires "Windows"))
-(defpyfun ("PyUnicode_AsMBCSString" unicode.as-mbcs-string) string! ((unicode unicode))
+(defpyfun ("PyUnicode_AsMBCSString" unicode.as-mbcs-string) #-python3 string! #+python3 object!  ((unicode unicode))
   (:requires "Windows"))
 
 ;; Methods and Slots
