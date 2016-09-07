@@ -13,7 +13,7 @@
            #:+None+
            #:+True+
            #:+False+
-           #:trace-refs
+           #:trace-refs	   
            .
            ;; SUPER HACKY to aid reloading
            #.(let ((sym nil))
@@ -59,6 +59,7 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
 "))
 
 (defpackage #:burgled-batteries
+  (:nicknames #:python)
   (:use #:cl #:python.cffi #:alexandria)
   (:shadowing-import-from #:python.cffi #:arithmetic-error #:type-error)
   (:shadow #:import
@@ -72,4 +73,7 @@ converting to and from the type.  See the WARNING above (defpytype \"PyString\"
            #:apply
            #:defpyfun
            #:defpyslot
-           #:defpymethod))
+           #:defpymethod
+	   #:defpymodule
+	   #:in-pymodule
+	   #:defpycallback))
