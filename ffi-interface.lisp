@@ -1,16 +1,11 @@
 (in-package #:python.cffi)
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (if (and (boundp '+abi-version+)
-           (= 3 +abi-version+))
-    (pushnew :python3 *features*)
-    (pushnew :python2 *features*)))
 ;;;; FFI Library
 ;; Much of what we do below requires it be loaded during macroexpansion time.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (define-foreign-library python-library
     (:darwin (:framework "Python"))
-    (:unix (:or #+python3 "/home/jingtao/anaconda3/envs/py34/lib/libpython3.4m.so.1.0" "libpython3.4m.so.1.0" "libpython3.4.so.1.0" "libpython2.7.so.1.0" "libpython2.6.so.1.0" "libpython2.5.so.1.0" "libpython2.4.so.1.0" "libpython2.3.so.1.0"))
+    (:unix (:or #+python3 "~/anaconda3/envs/py34/lib/libpython3.4m.so.1.0" #+python3 "libpython3.4m.so.1.0" #+python3 "libpython3.4.so.1.0" #-python3 "libpython2.7.so.1.0" #-python3"libpython2.6.so.1.0" #-python3"libpython2.5.so.1.0" #-python3"libpython2.4.so.1.0" #-python3"libpython2.3.so.1.0"))
     (:windows (:or "python27.dll" "python26.dll" "python25.dll" "python24.dll" "python23.dll"))
     (t (:default "libpython")))
   (use-foreign-library python-library))
