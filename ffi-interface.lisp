@@ -9,6 +9,7 @@
     (:windows (:or "python27.dll" "python26.dll" "python25.dll" "python24.dll" "python23.dll"))
     (t (:default "libpython")))
   (use-foreign-library python-library))
+
 
 ;;;; C-level macros (as read-time conditionals)
 ;;; Automatically detected by their effects.
