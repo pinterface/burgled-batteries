@@ -5,7 +5,8 @@
   (quickcheck
     (let ((*size* (1- (expt 2 31))))
       (for-all ((v an-integer))
-        (is= v (python.cffi:int.from-long v))
+        #-python3(is= v (python.cffi:int.from-long v))
+        #+python3(is= v (python.cffi:long.from-long v))
         (is= v (burgled-batteries:run (format nil "~d" v))))
       (for-all ((v a-boolean))
         (is= v (python.cffi:bool.from-long (if v 1 0)))

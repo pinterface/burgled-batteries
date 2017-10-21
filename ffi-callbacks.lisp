@@ -53,13 +53,13 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
 			      (t                        :positional-arguments)))))))
 
 (defun init-func-def (ptr name flags meth &optional (doc (null-pointer)))
-  (setf (foreign-slot-value ptr 'method-def 'name)  name
-        (foreign-slot-value ptr 'method-def 'flags) flags
-        (foreign-slot-value ptr 'method-def 'meth)  meth
-        (foreign-slot-value ptr 'method-def 'doc)   doc))
+  (setf (foreign-slot-value ptr '(:struct method-def) 'name)  name
+        (foreign-slot-value ptr '(:struct method-def) 'flags) flags
+        (foreign-slot-value ptr '(:struct method-def) 'meth)  meth
+        (foreign-slot-value ptr '(:struct method-def) 'doc)   doc))
 
 (defun make-pytype (&key name c-struct documentation)
-  (let ((ptr (foreign-alloc '%type)))
+  (let ((ptr (foreign-alloc '(:struct %type))))
     (setf (%object.refcnt       ptr) 1
           (%object.type*        ptr) (null-pointer) ; +Type.Type+?
           (%var.size            ptr) 0
@@ -81,7 +81,7 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
           (%type.getattro       ptr) (null-pointer)
           (%type.setattro       ptr) (null-pointer)
           (%type.as-buffer      ptr) (null-pointer)
-          (%type.flags          ptr) '()
+          (%type.flags          ptr) #-python3 '() #+python3 0
           (%type.doc            ptr) (or documentation (null-pointer))
           (%type.traverse       ptr) (null-pointer)
           (%type.clear          ptr) (null-pointer)
@@ -110,13 +110,13 @@ RETURN-TYPE should be either :pointer, in which case type translation will not o
     (type.ready ptr)))
 
 (defun build-module (name methods)
-  (let ((ptr (foreign-alloc 'method-def :count (1+ (length methods)))))
+  (let ((ptr (foreign-alloc '(:struct method-def) :count (1+ (length methods)))))
     (loop :for i :from 0
        :for (python-method-name . lisp-method) :in methods
-       :for defptr = (mem-aref ptr 'method-def i)
+       :for defptr = (mem-aref ptr '(:struct method-def) i)
        :do (init-func-def defptr python-method-name
 			  (get-callback-type lisp-method) 
 			  (get-callback lisp-method)))
-    (init-func-def (mem-aref ptr 'method-def (length methods)) 
+    (init-func-def (mem-aref ptr '(:struct method-def) (length methods)) 
 		   (null-pointer) 0 (null-pointer))
     (.init-module* name ptr)))

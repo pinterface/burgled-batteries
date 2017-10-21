@@ -2,11 +2,14 @@
 
 ;; Python must have been initialized for our macroexpansions to work.
 (eval-when (:compile-toplevel :load-toplevel)
-  (.initialize))
+  (.initialize)
+  #+(and sbcl unix); python will fail sbcl's sigpipe-handler.
+  (sb-unix::enable-interrupt sb-unix::sigpipe #'sb-unix::sigpipe-handler))
 
 (defpyexception "BaseException" (python-condition)
     (("args" :initarg :args)))
 (defpyexception "Exception" () ())
+#-python3
 (defpyexception "StandardError" (python-error) ())
 (defpyexception "ArithmeticError" () ())
 (defpyexception "LookupError" () ())

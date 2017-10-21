@@ -35,6 +35,7 @@
   ((:>= "Py_GE")))
 
 ;; Type Flags
+#-python3
 (bitfield (type-flags :base-type :long)
   ((:have-get-char-buffer     "Py_TPFLAGS_HAVE_GETCHARBUFFER"))
   ((:have-sequence-in         "Py_TPFLAGS_HAVE_SEQUENCE_IN"))
@@ -106,4 +107,5 @@
   ((:ssize-t            "T_PYSSIZET")))
 
 ;; API Version
+(constant (+abi-version+ "PYTHON_ABI_VERSION") :type integer)
 (constant (+api-version+ "PYTHON_API_VERSION") :type integer)
